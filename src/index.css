@@ -1,0 +1,182 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* --- Base + Tailwind layers --- */
+body {
+  font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  background-color: #02040a;
+}
+
+/* --- Galaxy canvas --- */
+#galaxy-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+}
+
+.ui-layer {
+  position: relative;
+  z-index: 10;
+}
+
+/* --- Glassmorphism panels --- */
+.glass-effect {
+  background: rgba(10, 14, 26, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.modal-bg {
+  background-color: rgba(3, 6, 18, 0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* --- Loader --- */
+.loader {
+  border: 4px solid rgba(255, 255, 255, 0.2);
+  border-top: 4px solid #818cf8;
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* --- Tooltip (hover-over-star) --- */
+.tooltip {
+  position: fixed;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  pointer-events: none;
+  transition: opacity 0.2s;
+  opacity: 0;
+  max-width: 250px;
+  transform: translate(-50%, -120%);
+}
+
+/* --- 3D-projected world labels (constellations + planets) --- */
+.world-label {
+  position: absolute;
+  color: #e0e7ff;
+  font-size: 1.5rem;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  opacity: 0.3;
+  pointer-events: none;
+  text-shadow: 0 0 10px rgba(79, 70, 229, 0.5);
+}
+
+.planet-label {
+  position: absolute;
+  color: #d1d5db;
+  font-size: 0.75rem;
+  background: rgba(10, 14, 26, 0.5);
+  padding: 2px 6px;
+  border-radius: 4px;
+  transform: translate(-50%, 15px);
+  cursor: pointer;
+  pointer-events: auto !important;
+  transition: all 0.2s ease;
+}
+
+.planet-label:hover {
+  color: #fff;
+  background: #4f46e5;
+}
+
+/* --- Range slider --- */
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  background: #818cf8;
+  cursor: pointer;
+  border-radius: 50%;
+  border: 2px solid #e0e7ff;
+}
+
+input[type='range']::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  background: #818cf8;
+  cursor: pointer;
+  border-radius: 50%;
+  border: 2px solid #e0e7ff;
+}
+
+/* --- Sidebar collapse transition --- */
+.sidebar-transition {
+  transition: width 0.3s ease-in-out;
+}
+
+/* --- Tab styling --- */
+.tab-active {
+  background-color: #4f46e5;
+  color: #ffffff;
+}
+
+.tab-inactive {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #d1d5db;
+  border-color: transparent;
+}
+
+/* --- Hypothesis-builder mini-game --- */
+.hypothesis-item {
+  cursor: grab;
+  touch-action: none;
+}
+
+.hypothesis-item:active {
+  cursor: grabbing;
+}
+
+.hypothesis-drop-zone {
+  border-style: dashed;
+}
+
+.hypothesis-correct {
+  background-color: rgba(52, 211, 153, 0.2);
+  border-color: #34d399;
+}
+
+/* --- Scrollbar hide --- */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* --- Citation chip pulse (used by Phase 4 GraphRAG to highlight matched stars) --- */
+@keyframes citation-glow {
+  0%, 100% {
+    box-shadow: 0 0 8px 2px rgba(129, 140, 248, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 16px 6px rgba(129, 140, 248, 0.8);
+  }
+}
+
+.citation-chip {
+  animation: citation-glow 2.4s ease-in-out infinite;
+}

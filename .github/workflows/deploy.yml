@@ -1,0 +1,106 @@
+name: Build & deploy (GitHub Pages + Hostinger)
+
+# Single CI workflow that:
+#   1. Builds the Vite app once (base: './' so the same dist/ works at both
+#      a sub-path and a domain root).
+#   2. Publishes to GitHub Pages.
+#   3. Mirrors the same dist/ to Hostinger's public_html via FTP for the
+#      production custom domain (starengineai.space).
+#
+# Required repo secrets for the Hostinger step:
+#   HOSTINGER_FTP_HOST      e.g. ftp.starengineai.space (or the host from hPanel)
+#   HOSTINGER_FTP_USER
+#   HOSTINGER_FTP_PASSWORD
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Allow only one concurrent deployment, skipping queued runs in between.
+concurrency:
+  group: 'pages-and-hostinger'
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build (Vite, base: './')
+        run: npm run build
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist
+          if-no-files-found: error
+          retention-days: 7
+
+  deploy-github-pages:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  deploy-hostinger:
+    needs: build
+    runs-on: ubuntu-latest
+    # Skip if FTP secrets aren't configured (e.g. on forks).
+    if: ${{ vars.HOSTINGER_ENABLED != 'false' }}
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Sync to Hostinger via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.HOSTINGER_FTP_HOST }}
+          username: ${{ secrets.HOSTINGER_FTP_USER }}
+          password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
+          local-dir: ./dist/
+          server-dir: /public_html/
+          # Only delete remote files that no longer exist in the build —
+          # keeps user-uploaded files at the root untouched if any exist.
+          dangerous-clean-slate: false
+          # Don't waste FTP roundtrips on artifacts we never serve.
+          exclude: |
+            **/.DS_Store
+            **/Thumbs.db
+            **/node_modules/**
