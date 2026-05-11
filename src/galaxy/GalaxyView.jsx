@@ -41,6 +41,7 @@ export function GalaxyView({
   onPlanetClick,
   focusedStar,
   pulsingConcept,
+  pulsingIds,
   filters,
   temporalFilter,
   lens,
@@ -294,7 +295,13 @@ export function GalaxyView({
       const isVisibleByYear = p.year >= temporalFilter.min && p.year <= temporalFilter.max;
       const isFilteredOut = filters.filteredIds !== null && !filters.filteredIds.has(p.id);
       star.visible = isVisibleByYear && !isFilteredOut;
-      star.isPulsing = Boolean(pulsingConcept && p.keywords.includes(pulsingConcept));
+      // Pulse a star if (a) the user clicked a "planet" matching one of
+      // its keywords, OR (b) it appears in the current retrieval result
+      // set (GraphRAG-driven visual citation linking).
+      star.isPulsing = Boolean(
+        (pulsingConcept && p.keywords.includes(pulsingConcept)) ||
+          (pulsingIds && pulsingIds.has(p.id)),
+      );
 
       starsRef.current.set(p.id, star);
       scene.add(star);
@@ -363,7 +370,7 @@ export function GalaxyView({
         });
       });
     }
-  }, [publications, filters, temporalFilter, lens, focusedStar, pulsingConcept]);
+  }, [publications, filters, temporalFilter, lens, focusedStar, pulsingConcept, pulsingIds]);
 
   const projectToScreen = useCallback((positionVec, camera) => {
     if (!positionVec || !camera || !mountRef.current) return { x: 0, y: 0 };

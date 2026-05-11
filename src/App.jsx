@@ -8,24 +8,17 @@
 // array into a single Gemini prompt. Phase 3 swaps that for the hybrid +
 // GraphRAG pipeline in src/rag/pipeline.js.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import { GalaxyView } from './galaxy/GalaxyView.jsx';
 import { processRealData } from './galaxy/processRealData.js';
 import { assetUrl } from './rag/assetUrl.js';
-import { generateContent, MissingApiKeyError } from './rag/gemini.js';
 import { hasApiKey } from './rag/apiKey.js';
+import { warmupEmbedder } from './rag/embedder.js';
+import { hybridRetrieve } from './rag/pipeline.js';
 import { GeminiSearchResultsModal } from './chat/GeminiSearchResultsModal.jsx';
 import { ResearchHub } from './chat/ResearchHub.jsx';
 import { ApiKeyModal } from './ui/ApiKeyModal.jsx';
 import { useStore } from './state/store.js';
-
-const SEARCH_SYSTEM_PROMPT = `You are an expert research assistant specializing in space biology. Your task is to identify relevant scientific papers based on a user's question. You will be given a user question and a JSON object representing nodes from a knowledge graph. Each node contains information about concepts, organisms, etc., and a "paper_mentions" array listing the PMC IDs of papers that mention it.
-
-Instructions:
-1. Analyze the user's question to understand the key concepts.
-2. Search through the provided knowledge graph nodes to find all nodes whose "name", "normalized_name", or "provenance" are relevant to the concepts in the question.
-3. Collect all unique paper IDs from the "paper_mentions" array of all the matching nodes.
-4. Return ONLY a JSON object with a single key "paper_ids" containing an array of all the collected paper IDs as strings. If no papers are found, return an empty array. Do not include any other text, explanation, or markdown formatting.`;
 
 export default function App() {
   // --- Selectors from store ---
@@ -50,6 +43,8 @@ export default function App() {
     setFocusedStar,
     pulsingConcept,
     setPulsingConcept,
+    pulsingIds,
+    setPulsingIds,
     selectedPublication,
     hubInitialTab,
     openHub,
@@ -57,6 +52,8 @@ export default function App() {
     isGeminiSearching,
     geminiSearchResults,
     geminiSearchError,
+    matchedNodes,
+    retrievalTimings,
     setGeminiSearchState,
     clearGeminiSearch,
     showApiKeyModal,
@@ -97,6 +94,15 @@ export default function App() {
     }
   }, [isLoadingData, setShowApiKeyModal]);
 
+  // --- Warm-load the MiniLM embedder in the background once data is in ---
+  // The model is ~25 MB; doing this on idle keeps the first search snappy.
+  useEffect(() => {
+    if (!isLoadingData) {
+      const idleCb = window.requestIdleCallback || ((fn) => setTimeout(fn, 0));
+      idleCb(() => warmupEmbedder());
+    }
+  }, [isLoadingData]);
+
   // --- Year range derived from data ---
   const [minYear, maxYear] = useMemo(() => {
     if (publications.length === 0) return [2000, 2025];
@@ -134,58 +140,66 @@ export default function App() {
     openHub(paper, 'chat');
   };
 
-  // --- Gemini search (Phase 1: original dump-KG-into-prompt logic) ---
+  // --- Hybrid retrieval (Phase 3 + 4) ---
+  // Replaces the legacy "stuff the entire KG into a Gemini prompt" with a
+  // proper BM25 + MiniLM dense + GraphRAG pipeline that runs entirely in
+  // the browser. Gemini is no longer needed for the retrieval step at all
+  // — it's reserved for the rerank/generation steps in Phase 5.
   const handleGeminiSearch = async () => {
     if (!searchTerm.trim()) {
       setGeminiSearchState({
         isGeminiSearching: false,
         geminiSearchResults: [],
         geminiSearchError: 'Please enter a question or topic to search.',
+        matchedNodes: [],
+        retrievalTimings: null,
       });
+      setPulsingIds(null);
       return;
     }
     setGeminiSearchState({
       isGeminiSearching: true,
       geminiSearchError: null,
-      geminiSearchResults: [],
+      geminiSearchResults: null,
+      matchedNodes: [],
+      retrievalTimings: null,
     });
 
     try {
-      // NOTE: Phase 3 replaces this naive context-stuffing with a proper
-      // BM25 + dense + GraphRAG pipeline. Until then we keep the original
-      // behavior so the rest of the UX is testable.
-      const parsed = await generateContent({
-        system: SEARCH_SYSTEM_PROMPT,
-        user: `User Question: "${searchTerm}"\n\nKnowledge Graph Nodes: ${JSON.stringify(knowledgeGraph.nodes)}`,
-        json: true,
-        schema: { type: 'object', properties: { paper_ids: { type: 'array', items: { type: 'string' } } } },
-      });
-      const paperIds = parsed?.paper_ids;
-      if (!Array.isArray(paperIds)) {
-        throw new Error("AI response did not contain a valid 'paper_ids' array.");
-      }
-      const foundPapers = publications.filter((p) => paperIds.includes(p.id));
+      const result = await hybridRetrieve(searchTerm, { topK: 20 });
+
+      // Join retrieval hits back to full paper records.
+      const pubById = new Map(publications.map((p) => [p.id, p]));
+      const joined = result.papers
+        .map(({ pmcId, sources, score, bestChunkId }) => {
+          const paper = pubById.get(pmcId);
+          if (!paper) return null;
+          return { paper, sources, score, bestChunkId };
+        })
+        .filter(Boolean);
+
       setGeminiSearchState({
         isGeminiSearching: false,
-        geminiSearchResults: foundPapers,
+        geminiSearchResults: joined,
         geminiSearchError: null,
+        matchedNodes: result.matchedNodes,
+        retrievalTimings: result.timings,
       });
+      setPulsingIds(new Set(joined.slice(0, 8).map(({ paper }) => paper.id)));
     } catch (err) {
-      console.error('Gemini search failed:', err);
-      if (err instanceof MissingApiKeyError) {
-        setGeminiSearchState({
-          isGeminiSearching: false,
-          geminiSearchResults: null,
-          geminiSearchError: null,
-        });
-        setShowApiKeyModal(true);
-      } else {
-        setGeminiSearchState({
-          isGeminiSearching: false,
-          geminiSearchError: err.message || 'An unknown error occurred during the AI search.',
-          geminiSearchResults: [],
-        });
-      }
+      console.error('Hybrid retrieval failed:', err);
+      // Surface common artifact-missing errors with a friendlier hint.
+      const msg = /HTTP 404|f16\.bin|bm25\.json/.test(err.message)
+        ? `Retrieval artifacts not found. Run notebooks/03_build_rag_index.ipynb and commit the produced files under public/data/. (Details: ${err.message})`
+        : err.message || 'An unknown error occurred during retrieval.';
+      setGeminiSearchState({
+        isGeminiSearching: false,
+        geminiSearchError: msg,
+        geminiSearchResults: [],
+        matchedNodes: [],
+        retrievalTimings: null,
+      });
+      setPulsingIds(null);
     }
   };
 
@@ -240,11 +254,15 @@ export default function App() {
               />
               <button
                 onClick={handleGeminiSearch}
-                title="Ask AI Assistant"
+                title="Hybrid retrieval: BM25 + MiniLM dense + GraphRAG"
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-indigo-300 hover:text-white p-2 rounded-full transition-colors bg-gray-900/50 hover:bg-indigo-600 disabled:opacity-50"
                 disabled={isGeminiSearching}
               >
-                <i className="fa-solid fa-wand-magic-sparkles"></i>
+                <i
+                  className={`fa-solid ${
+                    isGeminiSearching ? 'fa-spinner animate-spin' : 'fa-wand-magic-sparkles'
+                  }`}
+                ></i>
               </button>
             </div>
 
@@ -355,6 +373,7 @@ export default function App() {
           onPlanetClick={handleSetPulsingConcept}
           focusedStar={focusedStar}
           pulsingConcept={pulsingConcept}
+          pulsingIds={pulsingIds}
           filters={{ filteredIds: filteredPublicationIds }}
           temporalFilter={temporalFilter}
           lens={activeLens}
@@ -372,6 +391,8 @@ export default function App() {
       {(isGeminiSearching || geminiSearchResults || geminiSearchError) && (
         <GeminiSearchResultsModal
           results={geminiSearchResults || []}
+          matchedNodes={matchedNodes}
+          timings={retrievalTimings}
           isLoading={isGeminiSearching}
           error={geminiSearchError}
           onClose={clearGeminiSearch}

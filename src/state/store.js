@@ -45,6 +45,11 @@ export const useStore = create((set) => ({
   pulsingConcept: null,
   setPulsingConcept: (v) => set({ pulsingConcept: v }),
 
+  // Set of PMC IDs to pulse in the galaxy (driven by retrieval results
+  // so the matched stars visibly highlight when the user runs a search).
+  pulsingIds: null,
+  setPulsingIds: (v) => set({ pulsingIds: v }),
+
   // --- Research Hub modal ---
   selectedPublication: null,
   hubInitialTab: 'glance',
@@ -52,13 +57,22 @@ export const useStore = create((set) => ({
     set({ selectedPublication: pub, hubInitialTab: initialTab }),
   closeHub: () => set({ selectedPublication: null }),
 
-  // --- Gemini search results modal ---
+  // --- Search results modal (hybrid retrieval output) ---
   isGeminiSearching: false,
-  geminiSearchResults: null,
+  geminiSearchResults: null,   // Array<{ paper, sources[], score }>
   geminiSearchError: null,
+  matchedNodes: [],            // GraphRAG-matched KG concept nodes
+  retrievalTimings: null,      // { embed, bm25, dense, graph, fuse, total } ms
   setGeminiSearchState: (next) => set(next),
   clearGeminiSearch: () =>
-    set({ isGeminiSearching: false, geminiSearchResults: null, geminiSearchError: null }),
+    set({
+      isGeminiSearching: false,
+      geminiSearchResults: null,
+      geminiSearchError: null,
+      matchedNodes: [],
+      retrievalTimings: null,
+      pulsingIds: null,
+    }),
 
   // --- API key modal ---
   showApiKeyModal: false,
