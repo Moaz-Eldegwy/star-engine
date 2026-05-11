@@ -8,16 +8,18 @@
 // array into a single Gemini prompt. Phase 3 swaps that for the hybrid +
 // GraphRAG pipeline in src/rag/pipeline.js.
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { GalaxyView } from './galaxy/GalaxyView.jsx';
 import { processRealData } from './galaxy/processRealData.js';
 import { assetUrl } from './rag/assetUrl.js';
 import { hasApiKey } from './rag/apiKey.js';
 import { warmupEmbedder } from './rag/embedder.js';
 import { hybridRetrieve } from './rag/pipeline.js';
+import { rerank } from './rag/reranker.js';
 import { GeminiSearchResultsModal } from './chat/GeminiSearchResultsModal.jsx';
 import { ResearchHub } from './chat/ResearchHub.jsx';
 import { ApiKeyModal } from './ui/ApiKeyModal.jsx';
+import { HowItWorks } from './ui/HowItWorks.jsx';
 import { useStore } from './state/store.js';
 
 export default function App() {
@@ -59,6 +61,8 @@ export default function App() {
     showApiKeyModal,
     setShowApiKeyModal,
   } = useStore();
+
+  const [showHowItWorks, setShowHowItWorks] = useState(false);
 
   // --- One-time data load ---
   useEffect(() => {
@@ -178,12 +182,16 @@ export default function App() {
         })
         .filter(Boolean);
 
+      // Phase 5: LLM listwise rerank if the user has a Gemini key.
+      // Without a key, rerank silently skips and we show the hybrid order.
+      const { reranked, skipped: rerankSkipped } = await rerank(searchTerm, joined, { topN: 5 });
+
       setGeminiSearchState({
         isGeminiSearching: false,
-        geminiSearchResults: joined,
+        geminiSearchResults: reranked.length > 0 ? reranked : joined,
         geminiSearchError: null,
         matchedNodes: result.matchedNodes,
-        retrievalTimings: result.timings,
+        retrievalTimings: { ...result.timings, rerank: rerankSkipped ? 0 : 'on' },
       });
       setPulsingIds(new Set(joined.slice(0, 8).map(({ paper }) => paper.id)));
     } catch (err) {
@@ -334,13 +342,22 @@ export default function App() {
 
             {/* Settings shortcut */}
             <div className="mt-6 border-t border-gray-700 pt-4 text-xs text-gray-500 flex items-center justify-between">
-              <button
-                onClick={() => setShowApiKeyModal(true)}
-                className="hover:text-indigo-300 transition-colors"
-                title="Manage your Gemini API key"
-              >
-                <i className="fa-solid fa-key mr-1"></i> API key
-              </button>
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={() => setShowApiKeyModal(true)}
+                  className="hover:text-indigo-300 transition-colors"
+                  title="Manage your Gemini API key"
+                >
+                  <i className="fa-solid fa-key mr-1"></i> API key
+                </button>
+                <button
+                  onClick={() => setShowHowItWorks(true)}
+                  className="hover:text-indigo-300 transition-colors"
+                  title="The retrieval pipeline (BM25 + dense + GraphRAG + rerank)"
+                >
+                  <i className="fa-solid fa-circle-question mr-1"></i> How it works
+                </button>
+              </div>
               <span>
                 {publications.length} papers · {knowledgeGraph.nodes.length} graph nodes
               </span>
@@ -399,6 +416,8 @@ export default function App() {
           onChatWithPaper={handleChatFromSearch}
         />
       )}
+
+      <HowItWorks open={showHowItWorks} onClose={() => setShowHowItWorks(false)} />
 
       <ApiKeyModal
         open={showApiKeyModal}

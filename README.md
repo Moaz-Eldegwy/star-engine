@@ -1,48 +1,61 @@
 # Star Engine
 
-A 3D-galaxy exploration of **494 NASA space-biology papers**, powered by a
-knowledge graph and a fully in-browser RAG pipeline.
+<p align="center">
+  <strong>A 3D-galaxy exploration of 494 NASA space-biology papers — with hybrid + GraphRAG retrieval that runs entirely in your browser.</strong>
+</p>
 
-> **Status:** Active refactor in progress (Phases 0–6 of a portfolio-grade
-> rebuild). The original NASA Space Apps 2025 submission lives in the initial
-> commits; subsequent commits introduce hybrid retrieval, GraphRAG, and a
-> Vite + React modular structure. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-> (coming soon) for the full design.
+<p align="center">
+  <a href="https://starengineai.space">Live demo</a>
+  &nbsp;·&nbsp;
+  <a href="docs/ARCHITECTURE.md">Architecture</a>
+  &nbsp;·&nbsp;
+  <a href="notebooks/03_build_rag_index.ipynb">Indexing notebook</a>
+</p>
 
-## Live demo
+---
 
-- GitHub Pages: `https://<your-github-username>.github.io/StarEngine/`
-- Production: <https://starengineai.space>
+Star Engine started as a NASA Space Apps 2025 submission and grew into a
+portfolio piece for modern RAG over a knowledge graph. The retrieval
+side is the interesting part:
 
-## What makes it different
+- **Hybrid retrieval** — BM25 + MiniLM dense embeddings, fused with
+  Reciprocal Rank Fusion (k = 60).
+- **GraphRAG** — the query is entity-linked to KG concept nodes; the
+  1-hop subgraph boosts papers that share concepts with the query, and
+  the matched stars **pulse in the 3D galaxy** as you watch the answer
+  stream. The knowledge graph is load-bearing, not decorative.
+- **Listwise LLM rerank** — top-20 candidates collapsed to top-5 with
+  one structured-JSON Gemini call.
+- **Streaming generation + conversation memory** — Gemini SSE,
+  cancellable, last-6-turns history sent with every reply.
+- **Bring your own key (BYOK)** — your Gemini API key is stored only
+  in your browser's `localStorage`. Nothing ever ships with secrets.
 
-Most hackathon RAGs stop at "stuff text into a prompt." Star Engine treats the
-knowledge graph as a load-bearing retrieval index:
-
-1. **Hybrid retrieval** — BM25 + MiniLM dense embeddings, fused with
-   Reciprocal Rank Fusion.
-2. **GraphRAG** — query terms are entity-linked to KG nodes; the 1-hop
-   subgraph boosts papers that share concepts with the query, and the
-   matched stars **pulse in the 3D view** as the answer streams.
-3. **LLM listwise rerank** — top-30 candidates collapsed to top-5 with one
-   structured-JSON Gemini call.
-4. **Streaming, cited answers** — inline `[#]` citations that link back to
-   the paper, the chunk, and the galaxy.
-5. **Conversation memory** — last-6-turns + rolling summary, persisted in
-   IndexedDB.
-6. **Bring your own key (BYOK)** — your Gemini key is stored only in your
-   browser's `localStorage`; the project ships no secrets.
+All retrieval — embedding, BM25, vector cosine, KG entity-link — runs
+**locally in your browser** against precomputed static artifacts. The
+user's Gemini key is reserved for the rerank and generation steps.
 
 ## Tech stack
 
-- **Frontend:** React 18 · Three.js · Vite · Tailwind
-- **Retrieval (browser):** `@xenova/transformers` (MiniLM-L6-v2) ·
-  hand-rolled BM25 · brute-force cosine over fp16 typed arrays
-- **Generation:** Google Gemini (Flash) via streaming SSE
-- **Offline indexing:** Python / Jupyter — JATS XML → section-aware chunks →
-  fp16 embeddings → BM25 postings → lean KG
+- **Frontend** — React 18 · Three.js · Vite · Tailwind CSS
+- **Retrieval (browser)** — `@xenova/transformers` (MiniLM-L6-v2 in WASM),
+  hand-rolled BM25, brute-force cosine over fp16 typed arrays, Zustand
+- **Generation** — Google Gemini Flash, streaming SSE
+- **Offline indexing (Python / Colab)** — `sentence-transformers`,
+  `rank-bm25`, `lxml`, section-aware JATS chunking
+- **CI / hosting** — GitHub Actions → GitHub Pages + Hostinger (FTP) at
+  `starengineai.space`
 
-## Quickstart (coming together over the next commits)
+## Live demo
+
+- Production: <https://starengineai.space>
+- GitHub Pages mirror: `https://<your-github-username>.github.io/StarEngine/`
+
+Both URLs serve the same `dist/` (Vite is configured with `base: './'`).
+The CI pipeline at `.github/workflows/deploy.yml` builds once and
+publishes to both targets in parallel on every push to `main`.
+
+## Run locally
 
 ```bash
 git clone https://github.com/<your-github-username>/StarEngine
@@ -51,33 +64,109 @@ npm install
 npm run dev
 ```
 
-Then open `http://localhost:5173/`, paste a Gemini API key when prompted
+Then open <http://localhost:5173/>, paste a Gemini API key when prompted
 (free at <https://aistudio.google.com/apikey>), and explore.
 
-## Rebuilding the indices
+> **Note:** retrieval needs the precomputed index files under
+> `public/data/index/`. They aren't in the repo yet — run the indexing
+> notebook once and commit the outputs (see below).
 
-Run the three notebooks in order:
+## Rebuild the retrieval index
+
+The retrieval artifacts (chunks, embeddings, BM25 postings, lean KG)
+are produced by a single notebook:
 
 ```
-notebooks/01_fetch_and_parse.ipynb
-notebooks/02_extract_kg.ipynb
 notebooks/03_build_rag_index.ipynb
 ```
 
-The first downloads the raw JATS XML from PMC, the second runs Gemini
-extraction to build the knowledge graph, and the third produces the
-precomputed retrieval artifacts shipped under `public/data/index/`.
+It auto-detects Colab vs local. In Colab, mount Drive and point
+`PROJECT_ROOT` at wherever your 494 paper folders live; locally it
+walks `data/papers/{pmc_id}/full_text.xml`. Runtime is ~10 min on a
+free Colab CPU runtime, ~3-5 min on a T4. Outputs:
 
-API keys for the notebooks must be supplied via the `GEMINI_API_KEYS`
-environment variable (comma-separated) or Colab Secret with the same name —
-never hardcoded.
+```
+public/data/index/
+  chunks/manifest.json + chunks/{0000..0009}.jsonl
+  embeddings.f16.bin + embeddings.meta.json
+  kg_node_embeddings.f16.bin + kg_node_meta.json
+  bm25.json
+public/data/kg_lean.json
+```
+
+Commit those under `public/data/` and the site picks them up. Total
+size: ~12 MB. The 65 MB of raw JATS XML stays gitignored — runtime
+never needs it.
+
+## Deploy
+
+Push to `main` and `.github/workflows/deploy.yml` does the rest:
+
+1. `npm ci && npm run build` (Vite, base `./`)
+2. Upload `dist/` to GitHub Pages via `actions/deploy-pages@v4`
+3. Mirror `dist/` to Hostinger's `public_html/` via FTP (requires
+   `HOSTINGER_FTP_HOST`, `HOSTINGER_FTP_USER`, `HOSTINGER_FTP_PASSWORD`
+   repo secrets)
+
+Set `vars.HOSTINGER_ENABLED=false` to skip the Hostinger leg (useful
+for forks).
+
+## Architecture
+
+The 60-second pitch lives in the in-app **How it works** modal
+(question-mark icon in the sidebar). The deeper version with
+rationale + honest limitations is at [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+```
+            user question
+                  │
+                  ▼
+       embedQuery (MiniLM, in browser)
+                  │
+       ┌──────────┼──────────────────────┐
+       ▼          ▼                      ▼
+     BM25     Dense (fp16)         GraphRAG
+   ~10 ms     ~10 ms                ~5 ms
+       │          │                      │
+       └──────────┴──────────────────────┘
+                       ▼
+          Reciprocal Rank Fusion (k=60), top-20
+                       │
+                       ▼
+       Gemini listwise rerank → top-5
+                       │
+                       ▼
+        UI: matched stars pulse in galaxy,
+            citation chips with provenance
+```
+
+## Repository tour
+
+```
+src/
+  galaxy/      3D galaxy (Three.js) — stars, constellations, pulse-on-citation
+  chat/        ResearchHub, PaperChat (streaming + history),
+               GeminiSearchResultsModal, Citations
+  rag/         The retrieval pipeline:
+                 embedder.js · tokenizer.js · bm25.js · vectorSearch.js
+                 graphRetriever.js · pipeline.js · reranker.js · chunks.js
+                 gemini.js · apiKey.js · paperText.js · assetUrl.js
+  ui/          ApiKeyModal, HowItWorks, MarkdownRenderer
+  state/       store.js (zustand)
+notebooks/     00_legacy_pipeline (NASA Apps original) + 03_build_rag_index (new)
+docs/          ARCHITECTURE.md
+public/data/   publications.json, knowledge_graph.json, kg_lean.json,
+               index/ (precomputed retrieval artifacts)
+```
 
 ## Credits
 
-- Source dataset: NASA Open Science Data Repository, Space Apps 2025
+- Source dataset: NASA Open Science Data Repository / Space Apps 2025
 - Full-text content: PubMed Central (PMC) OAI API
-- Built originally for the NASA Space Apps Challenge 2025
+- Embedding model: `sentence-transformers/all-MiniLM-L6-v2`
+- Original Space Apps submission idea & team — preserved in the initial
+  commit and `notebooks/00_legacy_pipeline.ipynb`
 
 ## License
 
-[MIT](LICENSE).
+[MIT](LICENSE). Data attribution details inside the license file.
