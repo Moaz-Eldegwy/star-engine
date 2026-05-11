@@ -1,0 +1,1078 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Star Engine: The Knowledge Universe</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/js/all.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #02040a; /* Darker background */
+        }
+        #galaxy-canvas {
+            position: absolute; /* Changed from fixed to work within flex container */
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+        .ui-layer {
+            position: relative;
+            z-index: 10;
+        }
+        .glass-effect {
+            background: rgba(10, 14, 26, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .modal-bg {
+            background-color: rgba(3, 6, 18, 0.7);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+        .loader {
+            border: 4px solid rgba(255, 255, 255, 0.2);
+            border-top: 4px solid #818cf8;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .tooltip {
+            position: fixed;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            pointer-events: none;
+            transition: opacity 0.2s;
+            opacity: 0;
+            max-width: 250px;
+            transform: translate(-50%, -120%);
+        }
+        .world-label {
+            position: absolute; /* FIX: Changed from fixed to absolute */
+            color: #e0e7ff;
+            font-size: 1.5rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            opacity: 0.3;
+            pointer-events: none;
+            text-shadow: 0 0 10px rgba(79, 70, 229, 0.5);
+        }
+        .planet-label {
+             position: absolute; /* FIX: Changed from fixed to absolute */
+             color: #d1d5db;
+             font-size: 0.75rem;
+             background: rgba(10,14,26,0.5);
+             padding: 2px 6px;
+             border-radius: 4px;
+             transform: translate(-50%, 15px);
+             cursor: pointer;
+             pointer-events: auto !important;
+             transition: all 0.2s ease;
+        }
+        .planet-label:hover {
+            color: #fff;
+            background: #4f46e5;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #818cf8;
+            cursor: pointer;
+            border-radius: 50%;
+            border: 2px solid #e0e7ff;
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            background: #818cf8;
+            cursor: pointer;
+            border-radius: 50%;
+             border: 2px solid #e0e7ff;
+        }
+        .sidebar-transition {
+            transition: width 0.3s ease-in-out;
+        }
+        .tab-active {
+            background-color: #4f46e5;
+            color: #ffffff;
+        }
+        .tab-inactive {
+            background-color: rgba(255,255,255,0.1);
+            color: #d1d5db;
+            border-color: transparent;
+        }
+        .hypothesis-item {
+            cursor: grab;
+            touch-action: none;
+        }
+         .hypothesis-item:active {
+            cursor: grabbing;
+        }
+        .hypothesis-drop-zone {
+            border-style: dashed;
+        }
+        .hypothesis-correct {
+             background-color: rgba(52, 211, 153, 0.2);
+             border-color: #34d399;
+        }
+        /* Scrollbar Hide */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;  /* IE and Edge */
+            scrollbar-width: none;  /* Firefox */
+        }
+    </style>
+</head>
+<body class="h-full bg-gray-900 text-gray-200 overflow-hidden">
+    <div id="root" class="h-full"></div>
+    <script type="text/babel">
+        const { useState, useEffect, useMemo, useRef, useCallback } = React;
+
+        // --- BYOK (bring your own key) ---
+        // The user's Gemini key is stored in localStorage and never committed.
+        // This is a Phase-0 stopgap; Phase 1 replaces it with a proper modal
+        // in src/ui/ApiKeyModal.jsx and validation via models.list.
+        const GEMINI_KEY_STORAGE = 'starengine.geminiKey';
+        const getApiKey = () => {
+            let key = window.localStorage.getItem(GEMINI_KEY_STORAGE);
+            if (!key) {
+                key = window.prompt(
+                    "Paste your Gemini API key to enable AI features.\n" +
+                    "Get one free at https://aistudio.google.com/apikey\n" +
+                    "The key is stored only in your browser."
+                );
+                if (key) {
+                    key = key.trim();
+                    window.localStorage.setItem(GEMINI_KEY_STORAGE, key);
+                }
+            }
+            return key || null;
+        };
+
+        // --- REAL DATA PROCESSING ---
+        const processRealData = (publicationsData, knowledgeGraph) => {
+            // 1. Create a map for related papers from edges
+            const relatedPapersMap = new Map();
+            knowledgeGraph.edges.forEach(edge => {
+                if (edge.source && edge.target && edge.source.startsWith('paper:') && edge.target.startsWith('paper:')) {
+                    const sourceId = edge.source.replace('paper:', '');
+                    const targetId = edge.target.replace('paper:', '');
+                    
+                    if (!relatedPapersMap.has(sourceId)) relatedPapersMap.set(sourceId, new Set());
+                    if (!relatedPapersMap.has(targetId)) relatedPapersMap.set(targetId, new Set());
+                    
+                    relatedPapersMap.get(sourceId).add(targetId);
+                    relatedPapersMap.get(targetId).add(sourceId); // Relationships are bidirectional for the graph
+                }
+            });
+            // 2. Create maps for organisms and concepts from nodes
+            const paperInfoMap = new Map();
+            knowledgeGraph.nodes.forEach(node => {
+                if (node.paper_mentions && Array.isArray(node.paper_mentions)) {
+                    node.paper_mentions.forEach(paperId => {
+                        if (!paperInfoMap.has(paperId)) {
+                            paperInfoMap.set(paperId, { organisms: new Set(), concepts: [] });
+                        }
+                        const info = paperInfoMap.get(paperId);
+                        
+                        // Extract and normalize organism names
+                        if (node.label === 'Organism') {
+                            const nodeNameLower = node.name.toLowerCase();
+                            let organismName = 'Microbe'; // Default
+                            if (nodeNameLower.includes('human') || nodeNameLower.includes('homo sapien')) organismName = 'Human';
+                            else if (nodeNameLower.includes('mouse') || nodeNameLower.includes('mus musculus')) organismName = 'Mouse';
+                            else if (node.subtype && node.subtype.toLowerCase().includes('plant')) organismName = 'Plant';
+                            info.organisms.add(organismName);
+                        }
+                        
+                        // Add other node types as concepts
+                        info.concepts.push({ name: node.name, type: node.label });
+                    });
+                }
+            });
+            // 3. Process the publications object from publications.json
+            const publicationsArray = Object.values(publicationsData).map(p => {
+                if (!p.pmc_id) return null; // Skip if entry is invalid
+                
+                const id = p.pmc_id;
+                const info = paperInfoMap.get(id) || { organisms: new Set(), concepts: [] };
+                
+                // Pick the first organism, or default
+                const organism = info.organisms.values().next().value || 'Microbe';
+                return {
+                    id: id,
+                    title: p.title || "Untitled Publication",
+                    authors: Array.isArray(p.authors) ? p.authors.join(', ') : "N/A",
+                    year: p.year ? parseInt(p.year, 10) : 2020,
+                    journal: p.journal || "Unknown Journal",
+                    doi: p.doi || null,
+                    summary: p.abstract || 'No abstract available.',
+                    keywords: p.keywords || [],
+                    organism: organism,
+                    // Generate random citation count as it's not in the real data
+                    citation_count: 50 + Math.floor(Math.random() * 450),
+                    mission: p.mission || 'N/A',
+                    related_papers: Array.from(relatedPapersMap.get(id) || []),
+                    // Limit concepts to a reasonable number for the solar system view
+                    concepts: info.concepts.slice(0, 6)
+                };
+            }).filter(Boolean); // Filter out any null entries
+            return publicationsArray;
+        };
+        // --- CONSTANTS & HELPERS ---
+        const ORGANISM_CONFIG = { 'Plant': { color: 0x4ade80, icon: 'fa-seedling' }, 'Mouse': { color: 0x60a5fa, icon: 'fa-hippo' }, 'Human': { color: 0xfb923c, icon: 'fa-user-astronaut' }, 'Microbe': { color: 0xf8fafc, icon: 'fa-microscope' }, 'Default': { color: 0x94a3b8, icon: 'fa-dna' } };
+        const MISSION_CENTERS = { 'ISS': { x: -300, y: 100, z: 0 }, 'Ground Study': { x: 0, y: -150, z: 100 }, 'Shuttle': { x: 300, y: 100, z: -50 }, 'Bion-M': { x: 150, y: 200, z: -200 }, 'N/A': {x: 0, y: 0, z: 0} };
+        const CONSTELLATION_KEYWORDS = ['Human', 'Mouse', 'Plant', 'Microbe'];
+        
+        // --- UI COMPONENTS ---
+        const WorldUILabel = ({ labelData, camera, canvasRef }) => {
+            const elRef = useRef(null);
+            useEffect(() => {
+                let animationFrameId;
+                const animate = () => {
+                    if (elRef.current && camera && canvasRef.current) {
+                        const rect = canvasRef.current.getBoundingClientRect();
+                        const screenPosition = labelData.position.clone().project(camera);
+                        const x = (screenPosition.x + 1) / 2 * rect.width;
+                        const y = (-screenPosition.y + 1) / 2 * rect.height;
+                        elRef.current.style.transform = `translate(-50%, -50%) translate(${x}px, ${y}px)`;
+                        elRef.current.style.opacity = labelData.visible ? '0.3' : '0';
+                    }
+                    animationFrameId = requestAnimationFrame(animate);
+                };
+                animate();
+                return () => cancelAnimationFrame(animationFrameId);
+            }, [labelData, camera, canvasRef]);
+            return <div ref={elRef} className="world-label">{labelData.name}</div>;
+        };
+
+        const MarkdownRenderer = ({ content }) => {
+            const renderedContent = useMemo(() => {
+                if (!content) return null;
+
+                const lines = content.split('\n').filter(line => line.trim() !== '');
+
+                const elements = [];
+                let listItems = [];
+
+                const flushList = () => {
+                    if (listItems.length > 0) {
+                        elements.push(<ul key={`ul-${elements.length}`} className="list-disc pl-5 space-y-1 mb-3">{listItems}</ul>);
+                        listItems = [];
+                    }
+                };
+
+                lines.forEach((line, index) => {
+                    const trimmedLine = line.trim();
+                    const isListItem = trimmedLine.startsWith('* ') || trimmedLine.startsWith('- ') || trimmedLine.startsWith('• ');
+
+                    if (isListItem) {
+                        const itemContent = trimmedLine.substring(2);
+                        const parts = itemContent.split(/(\*\*.*?\*\*)/g);
+                        listItems.push(
+                            <li key={index}>
+                                {parts.map((part, i) =>
+                                    part.startsWith('**') ? <strong key={i}>{part.slice(2, -2)}</strong> : part
+                                )}
+                            </li>
+                        );
+                    } else {
+                        flushList();
+                        const parts = line.split(/(\*\*.*?\*\*)/g);
+                        elements.push(
+                            <p key={index} className="mb-3">
+                                {parts.map((part, i) =>
+                                    part.startsWith('**') ? <strong key={i}>{part.slice(2, -2)}</strong> : part
+                                )}
+                            </p>
+                        );
+                    }
+                });
+
+                flushList();
+                return elements;
+
+            }, [content]);
+
+            return <div>{renderedContent}</div>;
+        };
+
+
+        // --- THREE.JS GALAXY COMPONENT ---
+        const GalaxyView = ({ publications, onStarClick, onStarDoubleClick, onBackgroundClick, onPlanetClick, focusedStar, pulsingConcept, filters, temporalFilter, lens }) => {
+            const mountRef = useRef(null);
+            const sceneRef = useRef(null);
+            const cameraRef = useRef(null);
+            const rendererRef = useRef(null);
+            const controlsRef = useRef(null);
+            const tooltipRef = useRef(null);
+            const starsRef = useRef(new Map());
+            const linesRef = useRef([]);
+            const hoveredStarRef = useRef(null);
+            const clickTimeoutRef = useRef(null);
+            const starTextureRef = useRef(null);
+            const focusedGroupRef = useRef(null);
+            const [constellationLabels, setConstellationLabels] = useState([]);
+            const [planetLabels, setPlanetLabels] = useState([]);
+            
+            const getStarColor = (organism) => (ORGANISM_CONFIG[organism] || ORGANISM_CONFIG.Default).color;
+            if(!starTextureRef.current) {
+                const canvas = document.createElement('canvas');
+                canvas.width = 64; canvas.height = 64;
+                const context = canvas.getContext('2d');
+                const gradient = context.createRadialGradient(32, 32, 0, 32, 32, 32);
+                gradient.addColorStop(0, 'rgba(255, 255, 255, 1)'); gradient.addColorStop(0.2, 'rgba(255, 255, 255, 0.8)'); gradient.addColorStop(0.4, 'rgba(255, 255, 255, 0.3)'); gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+                context.fillStyle = gradient; context.fillRect(0, 0, 64, 64);
+                starTextureRef.current = new THREE.CanvasTexture(canvas);
+            }
+            // Initialize Scene
+            useEffect(() => {
+                const mountNode = mountRef.current;
+                const scene = new THREE.Scene(); sceneRef.current = scene;
+                const camera = new THREE.PerspectiveCamera(75, mountNode.clientWidth / mountNode.clientHeight, 0.1, 2000);
+                camera.position.z = 500; cameraRef.current = camera;
+                const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+                renderer.setSize(mountNode.clientWidth, mountNode.clientHeight); renderer.setPixelRatio(window.devicePixelRatio);
+                rendererRef.current = renderer;
+                mountNode.appendChild(renderer.domElement);
+                const controls = new THREE.OrbitControls(camera, renderer.domElement);
+                controls.enableDamping = true; controls.dampingFactor = 0.05; controls.screenSpacePanning = false;
+                controls.minDistance = 50; controls.maxDistance = 1000; controlsRef.current = controls;
+                const raycaster = new THREE.Raycaster(); const mouse = new THREE.Vector2();
+                const animate = () => {
+                    requestAnimationFrame(animate);
+                    const focusedStarData = focusedStar ? starsRef.current.get(focusedStar.id) : null;
+                    if (focusedStarData) {
+                        const offset = new THREE.Vector3(0, 0, 80);
+                        const targetPosition = focusedStarData.position.clone().add(offset);
+                        camera.position.lerp(targetPosition, 0.04);
+                        controls.target.lerp(focusedStarData.position, 0.04);
+                    }
+                    controls.update();
+                    starsRef.current.forEach((star) => {
+                         const targetScale = hoveredStarRef.current === star.userData.id || (star.isPulsing && !focusedStar) ? 1.5 : 1;
+                         const scale = star.userData.baseScale * targetScale * (focusedStar ? (focusedStar.id === star.userData.id ? 1.8 : 0.2) : 1);
+                         star.scale.x = THREE.MathUtils.lerp(star.scale.x, scale, 0.1);
+                         star.scale.y = THREE.MathUtils.lerp(star.scale.y, scale, 0.1);
+                    });
+                     if (focusedGroupRef.current) {
+                           focusedGroupRef.current.rotation.y += 0.005;
+                           setPlanetLabels(prev => prev.map(p => ({...p, position: p.object.getWorldPosition(new THREE.Vector3())})));
+                      }
+                    renderer.render(scene, camera);
+                };
+                animate();
+                const handleResize = () => { camera.aspect = mountNode.clientWidth / mountNode.clientHeight; camera.updateProjectionMatrix(); renderer.setSize(mountNode.clientWidth, mountNode.clientHeight); };
+                const resizeObserver = new ResizeObserver(handleResize);
+                resizeObserver.observe(mountNode);
+                const handleMouseMove = (event) => {
+                    if (!renderer.domElement || !tooltipRef.current) return;
+                    const rect = renderer.domElement.getBoundingClientRect();
+                    mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+                    mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+                    raycaster.setFromCamera(camera, mouse);
+                    const intersects = raycaster.intersectObjects(Array.from(starsRef.current.values()));
+                    
+                    if (intersects.length > 0 && !focusedStar) {
+                        const intersectedStar = intersects[0].object;
+                        hoveredStarRef.current = intersectedStar.userData.id;
+                        const tooltip = tooltipRef.current;
+                        tooltip.style.opacity = '1';
+                        tooltip.style.left = `${event.clientX}px`;
+                        tooltip.style.top = `${event.clientY}px`;
+                        tooltip.innerHTML = `<strong>${intersectedStar.userData.title}</strong><br/>${intersectedStar.userData.authors} (${intersectedStar.userData.year})`;
+                        mountNode.style.cursor = 'pointer';
+                    } else {
+                        hoveredStarRef.current = null;
+                        tooltipRef.current.style.opacity = '0';
+                        mountNode.style.cursor = 'auto';
+                    }
+                };
+                const handlePointerDown = (event) => {
+                    event.preventDefault();
+                    const rect = renderer.domElement.getBoundingClientRect();
+                    mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+                    mouse.y = - ((event.clientY - rect.top) / rect.height) * 2 + 1;
+                    raycaster.setFromCamera(mouse, camera);
+                    const intersects = raycaster.intersectObjects(Array.from(starsRef.current.values()));
+                    
+                    if (clickTimeoutRef.current) { // Double click
+                        clearTimeout(clickTimeoutRef.current);
+                        clickTimeoutRef.current = null;
+                        if(intersects.length > 0) onStarDoubleClick(intersects[0].object.userData);
+                    } else { // Single click
+                        clickTimeoutRef.current = setTimeout(() => {
+                            if(intersects.length > 0) {
+                                onStarClick(intersects[0].object.userData);
+                            } else {
+                                if (!event.target.classList.contains('planet-label')) onBackgroundClick();
+                            }
+                            clickTimeoutRef.current = null;
+                        }, 250);
+                    }
+                };
+                
+                mountNode.addEventListener('pointerdown', handlePointerDown);
+                mountNode.addEventListener('mousemove', handleMouseMove);
+                return () => { resizeObserver.unobserve(mountNode); mountNode.removeEventListener('pointerdown', handlePointerDown); mountNode.removeEventListener('mousemove', handleMouseMove); if(mountNode.contains(renderer.domElement)) mountNode.removeChild(renderer.domElement); };
+            }, []);
+            // Update Scene Objects
+            useEffect(() => {
+                const scene = sceneRef.current;
+                if (!scene || !publications) return;
+                
+                starsRef.current.forEach(star => scene.remove(star));
+                starsRef.current.clear();
+                linesRef.current.forEach(line => scene.remove(line));
+                linesRef.current = [];
+                if (focusedGroupRef.current) scene.remove(focusedGroupRef.current);
+                setPlanetLabels([]);
+                let constellationCenters = (lens === 'mission')
+                    ? MISSION_CENTERS
+                    : CONSTELLATION_KEYWORDS.reduce((acc, key, i) => {
+                        const angle = (i / CONSTELLATION_KEYWORDS.length) * Math.PI * 2;
+                        acc[key] = { x: 350 * Math.cos(angle), y: 100 * Math.sin(i * Math.PI), z: 350 * Math.sin(angle) };
+                        return acc;
+                    }, {});
+                const dynamicConstellationInfo = {};
+                Object.keys(constellationCenters).forEach(key => {
+                    dynamicConstellationInfo[key] = { center: new THREE.Vector3(), count: 0 };
+                });
+                const validYears = publications.map(p => p.year).filter(y => y > 1900);
+                const minPubYear = Math.min(...validYears);
+                const maxPubYear = Math.max(...validYears);
+                
+                publications.forEach(p => {
+                    const { citation_count, year, organism } = p;
+                    const luminosity = 0.8 + Math.min(citation_count / 500, 1) * 0.7;
+                    const baseScale = 15 + ((year - minPubYear) / (maxPubYear - minPubYear)) * 15;
+                    const material = new THREE.SpriteMaterial({ map: starTextureRef.current, color: getStarColor(organism), opacity: luminosity, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, });
+                    const star = new THREE.Sprite(material);
+                    let key = (lens === 'mission') ? p.mission : CONSTELLATION_KEYWORDS.find(k => k === p.organism) || 'Microbe';
+                    const center = constellationCenters[key] || { x: 0, y: 0, z: 0 };
+                    star.position.set(center.x + (Math.random() - 0.5) * 250, center.y + (Math.random() - 0.5) * 250, center.z + (Math.random() - 0.5) * 250);
+                    star.scale.set(baseScale, baseScale, 1);
+                    star.userData = { ...p, baseScale };
+                    const isVisibleByYear = p.year >= temporalFilter.min && p.year <= temporalFilter.max;
+                    const isFilteredOut = filters.filteredIds !== null && !filters.filteredIds.has(p.id);
+                    star.visible = isVisibleByYear && !isFilteredOut;
+                    // FIX: Removed search term dependency from pulsing logic
+                    star.isPulsing = (pulsingConcept && p.keywords.includes(pulsingConcept));
+                    starsRef.current.set(p.id, star);
+                    scene.add(star);
+                    if (star.visible && dynamicConstellationInfo[key]) {
+                        dynamicConstellationInfo[key].center.add(star.position);
+                        dynamicConstellationInfo[key].count++;
+                    }
+                });
+                const newConstellationLabels = Object.entries(dynamicConstellationInfo).map(([name, info]) => {
+                    const isLabelVisible = info.count > 0 && lens !== 'mission' && !focusedStar;
+                    const position = isLabelVisible ? info.center.divideScalar(info.count) : new THREE.Vector3(0, 0, -2000);
+                    return { name, position, visible: isLabelVisible };
+                });
+                setConstellationLabels(newConstellationLabels);
+                if (focusedStar) {
+                    const focusedStarData = starsRef.current.get(focusedStar.id);
+                    if (focusedStarData) {
+                      focusedGroupRef.current = new THREE.Group();
+                      focusedGroupRef.current.position.copy(focusedStarData.position);
+                      const newPlanetLabels = [];
+                      focusedStar.concepts.forEach((concept, i) => {
+                          const radius = 25 + i * 10;
+                          const angle = (i / focusedStar.concepts.length) * Math.PI * 2 + Math.random();
+                          const planet = new THREE.Mesh(new THREE.SphereGeometry(2, 16, 16), new THREE.MeshBasicMaterial({color: 0xa5b4fc}));
+                          planet.position.set(Math.cos(angle) * radius, 0, Math.sin(angle) * radius);
+                          focusedGroupRef.current.add(planet);
+                          newPlanetLabels.push({ name: concept.name, type: concept.type, object: planet, position: planet.getWorldPosition(new THREE.Vector3()) });
+                      });
+                      scene.add(focusedGroupRef.current);
+                      setPlanetLabels(newPlanetLabels);
+                    }
+                } else {
+                    const lineMaterial = new THREE.LineBasicMaterial({ color: 0x4f46e5, opacity: 0.1, transparent: true, depthWrite: false });
+                    publications.forEach(p => { const sourceStar = starsRef.current.get(p.id); if (sourceStar && sourceStar.visible && p.related_papers) { p.related_papers.forEach(relatedId => { const targetStar = starsRef.current.get(relatedId); if (targetStar && targetStar.visible) { const points = [sourceStar.position.clone(), targetStar.position.clone()]; const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), lineMaterial); scene.add(line); linesRef.current.push(line); } }); } });
+                }
+            }, [publications, filters, temporalFilter, lens, focusedStar, pulsingConcept]);
+            
+            const projectToScreen = (positionVec, camera) => {
+                if (!positionVec || !camera || !mountRef.current) return { x: 0, y: 0 };
+                const rect = mountRef.current.getBoundingClientRect();
+                const vector = positionVec.clone().project(camera);
+                return { 
+                    x: (vector.x + 1) / 2 * rect.width,
+                    y: (-vector.y + 1) / 2 * rect.height
+                };
+            };
+            return (
+                <div className="w-full h-full relative">
+                    <div ref={mountRef} id="galaxy-canvas"></div>
+                    <div ref={tooltipRef} className="tooltip glass-effect"></div>
+                    <div className="absolute top-0 left-0 w-full h-full pointer-events-none">
+                        {constellationLabels.map(label => <WorldUILabel key={label.name} labelData={label} camera={cameraRef.current} canvasRef={mountRef} />)}
+                        {planetLabels.map(label => {
+                            const screenPos = projectToScreen(label.position, cameraRef.current);
+                            return <div key={label.name} className="planet-label" style={{left: `${screenPos.x}px`, top: `${screenPos.y}px`}} onClick={(e) => { e.stopPropagation(); onPlanetClick(label.name); }}>{label.name}</div>
+                        })}
+                    </div>
+                </div>
+            );
+        };
+        
+        // --- RESEARCH HUB & SUB-COMPONENTS ---
+        const ResearchHub = ({ publication, onClose, initialTab }) => {
+            const [activeTab, setActiveTab] = useState(initialTab || 'glance');
+            const tabs = {glance: "At a Glance", chat: "Chat with this Paper", visualize: "Visualize Results", connections: "Explore Connections", video: "AI Video", game: "Edu-Game"};
+            const organismIcon = (ORGANISM_CONFIG[publication.organism] || ORGANISM_CONFIG.Default).icon;
+            
+            const [summary, setSummary] = useState(null);
+            const [isSummarizing, setIsSummarizing] = useState(false);
+            const [summaryError, setSummaryError] = useState(null);
+
+            const handleGetSummary = async () => {
+                setIsSummarizing(true);
+                setSummaryError(null);
+                setSummary(null);
+
+                let paperContent = `Abstract: ${publication.summary}`;
+                try {
+                    const response = await fetch(`/data/papers/${publication.id}/full_text.xml`);
+                    if (response.ok) {
+                        const xmlText = await response.text();
+                        const parser = new DOMParser();
+                        const xmlDoc = parser.parseFromString(xmlText, "text/xml");
+                        const fullText = xmlDoc.documentElement.textContent;
+                        const maxChars = 15000;
+                        paperContent = `Full Text (Excerpt): ${fullText.substring(0, maxChars)}`;
+                    }
+                } catch (fetchError) {
+                    console.warn("Could not fetch full text for summary, using abstract.", fetchError);
+                }
+
+                const apiKey = getApiKey();
+                if (!apiKey) {
+                    setIsSummarizing(false);
+                    setSummaryError("A Gemini API key is required for AI features. Refresh and paste one when prompted.");
+                    return;
+                }
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key=${apiKey}`;
+
+                const systemPrompt = `You are a scientific research assistant. Your task is to provide a concise, easy-to-understand summary of the provided scientific text. Focus on the key findings, methodology, and conclusions. Structure the summary into a few key bullet points using markdown (*). Also, make key terms **bold**.`;
+                const userQuery = `Please summarize the following text from the paper "${publication.title}":\n\n${paperContent}`;
+
+                const payload = {
+                    contents: [{ parts: [{ text: userQuery }] }],
+                    systemInstruction: { parts: [{ text: systemPrompt }] },
+                };
+
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error?.message || `API request failed with status ${response.status}`);
+                    }
+
+                    const result = await response.json();
+                    const aiResponse = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+                    if (aiResponse) {
+                        setSummary(aiResponse);
+                    } else {
+                        throw new Error("Received an empty summary from the AI.");
+                    }
+                } catch (error) {
+                    console.error("Gemini summary failed:", error);
+                    setSummaryError(`Failed to generate summary. ${error.message}`);
+                } finally {
+                    setIsSummarizing(false);
+                }
+            };
+
+
+            const TabContent = () => {
+                switch(activeTab) {
+                    case 'visualize': return <div className="text-center p-8 text-gray-400">AI-generated flowcharts coming soon.</div>;
+                    case 'connections': return <div className="text-center p-8 text-gray-400">Interactive 'ego graph' feature under development.</div>;
+                    case 'video': return <div className="text-center p-8 text-gray-400">AI-generated video summaries coming soon.</div>;
+                    case 'game': return <HypothesisBuilder publication={publication} />;
+                    case 'chat': return <PaperChat publication={publication} />;
+                    default: return (<>
+                        <div className="my-6 glass-effect p-4 rounded-lg"><h4 className="text-lg font-bold text-white mb-3">Quick Look</h4><div className="flex justify-around text-center"><div className="flex flex-col items-center w-1/3"><i className={`fa-solid ${organismIcon} text-3xl text-indigo-300`}></i><span className="mt-2 text-sm text-gray-400">Organism</span><span className="font-bold text-white">{publication.organism}</span></div><div className="flex flex-col items-center w-1/3"><i className="fa-solid fa-star text-3xl text-indigo-300"></i><span className="mt-2 text-sm text-gray-400">Citations</span><span className="font-bold text-white">{publication.citation_count}</span></div><div className="flex flex-col items-center w-1/3"><i className="fa-solid fa-calendar-days text-3xl text-indigo-300"></i><span className="mt-2 text-sm text-gray-400">Year</span><span className="font-bold text-white">{publication.year}</span></div></div></div>
+                        <p className="text-gray-300 mb-4"><strong className="text-indigo-400">Abstract:</strong> {publication.summary || 'Not available.'}</p>
+                        <div className="flex flex-wrap gap-2">{publication.keywords.map(k => <span key={k} className="bg-gray-700 text-indigo-200 text-xs font-semibold px-2.5 py-1 rounded-full">{k}</span>)}</div>
+                        <a href={`https://www.ncbi.nlm.nih.gov/pmc/articles/PMC${publication.id}/`} target="_blank" rel="noopener noreferrer" className="inline-block mt-4 text-indigo-400 hover:text-indigo-300">Read Full Paper <i className="fa-solid fa-arrow-up-right-from-square ml-1"></i></a>
+                        <div className="mt-6 border-t border-gray-700 pt-6">
+                            <button onClick={handleGetSummary} disabled={isSummarizing} className="w-full bg-indigo-600 px-4 py-3 rounded-lg font-semibold hover:bg-indigo-500 disabled:bg-indigo-800 disabled:cursor-not-allowed flex items-center justify-center transition-colors">
+                                {isSummarizing ? (
+                                    <>
+                                        <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                        Generating Summary...
+                                    </>
+                                ) : (
+                                    <><i className="fa-solid fa-wand-magic-sparkles mr-2"></i> Get AI Paper Summary</>
+                                )}
+                            </button>
+                            {summaryError && <p className="mt-4 text-red-400 text-center">{summaryError}</p>}
+                            {summary && <div className="mt-4 glass-effect p-4 rounded-lg text-gray-300"><MarkdownRenderer content={summary} /></div>}
+                        </div>
+                    </>);
+                }
+            };
+            return (<div className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-bg" onClick={onClose}><div className="glass-effect rounded-xl w-full max-w-4xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}><div className="p-6 border-b border-gray-700"><div className="flex justify-between items-start"><h2 className="text-2xl font-bold text-indigo-300 mb-2">{publication.title}</h2><button onClick={onClose} className="text-gray-400 hover:text-white transition-colors"><i className="fa-solid fa-times text-2xl"></i></button></div><p className="text-md text-gray-400">{publication.authors}</p><p className="text-sm text-gray-500">{publication.journal}, {publication.year}</p></div><div className="flex-shrink-0 p-4 border-b border-gray-700"><div className="flex space-x-2 overflow-x-auto no-scrollbar">{Object.entries(tabs).map(([key, value]) => (<button key={key} onClick={() => setActiveTab(key)} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex-shrink-0 ${activeTab === key ? 'tab-active' : 'tab-inactive hover:bg-white/20'}`}>{value}</button>))}</div></div><div className="flex-grow p-6 overflow-y-auto no-scrollbar"><TabContent /></div></div></div>);
+        };
+        const HypothesisBuilder = ({publication}) => { const [feedback, setFeedback] = useState(null); const cause = publication.keywords.find(k => k === 'Microgravity' || k === 'Radiation') || "Spaceflight"; const effect = publication.keywords.find(k => k.toLowerCase().includes('atrophy') || k.toLowerCase().includes('loss') || k.toLowerCase().includes('decrease')) || "Biological Change"; const handleDrop = (e) => { e.preventDefault(); if (e.dataTransfer.getData("text/plain") === 'cause') { setFeedback({correct: true, message: `Correct! ${cause} causes ${effect} in this study.`}); e.target.classList.add('hypothesis-correct'); } else { setFeedback({correct: false, message: "Not quite, try the other concept."}); } }; return (<div><h3 className="text-xl font-bold text-white mb-2">Hypothesis Builder (coming soon)</h3><p className="text-gray-400 mb-6">Drag the correct cause to the drop zone.</p><div className="flex justify-around items-center h-48 bg-gray-900/50 p-4 rounded-lg"><div className="flex flex-col items-center"><div className="hypothesis-item bg-indigo-600 p-4 rounded-lg shadow-lg text-center" draggable="true" onDragStart={(e) => e.dataTransfer.setData("text/plain", "cause")}><i className="fa-solid fa-rocket mr-2"></i> {cause}</div><div className="hypothesis-item mt-4 bg-purple-600 p-4 rounded-lg shadow-lg text-center" draggable="true" onDragStart={(e) => e.dataTransfer.setData("text/plain", "other")}><i className="fa-solid fa-flask mr-2"></i> Random Factor</div></div><i className="fa-solid fa-arrow-right-long text-3xl text-gray-500"></i><div className="hypothesis-drop-zone w-48 h-24 border-2 border-gray-600 rounded-lg flex items-center justify-center text-gray-500" onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>Drop Cause</div><i className="fa-solid fa-arrow-right-long text-3xl text-gray-500"></i><div className="bg-green-800/50 border border-green-500 p-4 rounded-lg text-center"><i className="fa-solid fa-dna mr-2"></i> {effect}</div></div>{feedback && <p className={`mt-4 text-center font-semibold ${feedback.correct ? 'text-green-400' : 'text-red-400'}`}>{feedback.message}</p>}</div>); }
+        
+        const PaperChat = ({ publication }) => {
+            const [messages, setMessages] = useState([]);
+            const [input, setInput] = useState('');
+            const [isThinking, setIsThinking] = useState(false);
+            const [paperText, setPaperText] = useState(null);
+            const [isLoadingText, setIsLoadingText] = useState(true);
+
+            useEffect(() => {
+                const fetchPaperText = async () => {
+                    try {
+                        setIsLoadingText(true);
+                        // Path is root-relative for reliability
+                        const response = await fetch(`/data/papers/${publication.id}/full_text.xml`);
+                        if (!response.ok) throw new Error(`Network response was not ok. Status: ${response.status}`);
+                        const xmlText = await response.text();
+                        
+                        const parser = new DOMParser();
+                        const xmlDoc = parser.parseFromString(xmlText, "text/xml");
+                        const fullText = xmlDoc.documentElement.textContent;
+
+                        // Limit the text size to avoid overly large API payloads
+                        const maxChars = 15000;
+                        setPaperText(fullText.substring(0, maxChars));
+                        setMessages([{text: `I've loaded the paper "${publication.title}". How can I help you explore it?`, sender: 'ai'}]);
+                    } catch (error) {
+                        console.error("Failed to fetch paper text:", error);
+                        setPaperText(null); // Set to null on error
+                        setMessages([{text: "I couldn't load the full text for this paper, but you can ask me about the abstract.", sender: 'ai'}]);
+                    } finally {
+                        setIsLoadingText(false);
+                    }
+                };
+                fetchPaperText();
+            }, [publication.id, publication.title]);
+
+            const handleSend = async () => {
+                if(!input.trim()) return;
+                const newMessages = [...messages, {text: input, sender: 'user'}];
+                setMessages(newMessages);
+                const currentInput = input;
+                setInput('');
+                setIsThinking(true);
+
+                const apiKey = getApiKey();
+                if (!apiKey) {
+                    setIsThinking(false);
+                    setMessages([...newMessages, { text: "A Gemini API key is required for AI features. Refresh and paste one when prompted.", sender: 'bot' }]);
+                    return;
+                }
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key=${apiKey}`;
+
+                const systemPrompt = `You are a helpful research assistant. Your task is to answer questions about a scientific paper. You will be given the abstract and, if available, the full text of the paper. Answer the user's questions based *only* on the provided text. If the answer cannot be found in the text, state that you cannot find the answer in the provided document. Keep your answers concise and directly related to the user's question.`;
+
+                const context = paperText 
+                    ? `Full Text (Excerpt): ${paperText}`
+                    : `Abstract: ${publication.summary}`;
+
+                const userQuery = `Using the following context, please answer the user's question.\n\nContext:\n${context}\n\nUser Question: ${currentInput}`;
+
+                const payload = {
+                    contents: [{ parts: [{ text: userQuery }] }],
+                    systemInstruction: { parts: [{ text: systemPrompt }] },
+                };
+
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error?.message || `API request failed with status ${response.status}`);
+                    }
+
+                    const result = await response.json();
+                    const aiResponse = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                    
+                    if (aiResponse) {
+                        setMessages([...newMessages, {text: aiResponse, sender: 'ai'}]);
+                    } else {
+                        throw new Error("Received an empty response from the AI.");
+                    }
+
+                } catch (error) {
+                    console.error("Gemini API call failed:", error);
+                    setMessages([...newMessages, {text: `Sorry, I encountered an error. ${error.message}`, sender: 'ai'}]);
+                } finally {
+                    setIsThinking(false);
+                }
+            };
+            
+            if (isLoadingText) {
+                return <div className="flex items-center justify-center h-[50vh]"><div className="loader"></div></div>;
+            }
+            
+            return (<div className="flex flex-col h-[50vh]"><div className="flex-grow overflow-y-auto pr-4 space-y-4">{messages.map((msg, index) => (<div key={index} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}><div className={`max-w-md p-3 rounded-lg ${msg.sender === 'user' ? 'bg-indigo-600 text-white' : 'bg-gray-700'}`}>{msg.text}</div></div>))}{isThinking && <div className="flex justify-start"><div className="bg-gray-700 p-3 rounded-lg"><div className="flex items-center space-x-2"><div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse"></div><div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse [animation-delay:0.2s]"></div><div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse [animation-delay:0.4s]"></div></div></div></div>}</div><div className="mt-4 flex"><input type="text" value={input} onChange={e => setInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleSend()} placeholder="Ask a question..." className="w-full bg-gray-800 border border-gray-600 rounded-l-lg py-2 px-4 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500" /><button onClick={handleSend} disabled={isThinking} className="bg-indigo-600 px-4 py-2 rounded-r-lg hover:bg-indigo-500 disabled:bg-indigo-800"><i className="fa-solid fa-paper-plane"></i></button></div></div>);
+        };
+
+        const GeminiSearchResultsModal = ({ results, isLoading, error, onClose, onChatWithPaper }) => {
+            return (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-bg" onClick={onClose}>
+                    <div className="glass-effect rounded-xl w-full max-w-4xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                        <div className="p-4 sm:p-6 border-b border-gray-700 flex justify-between items-center">
+                            <h2 className="text-2xl font-bold text-indigo-300">AI Search Results</h2>
+                            <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors"><i className="fa-solid fa-times text-2xl"></i></button>
+                        </div>
+                        <div className="flex-grow p-4 sm:p-6 overflow-y-auto no-scrollbar">
+                            {isLoading && (
+                                <div className="flex flex-col items-center justify-center h-full">
+                                    <div className="loader"></div>
+                                    <p className="mt-4 text-lg text-indigo-300">Searching the knowledge graph...</p>
+                                </div>
+                            )}
+                            {error && (
+                                <div className="text-center text-red-400">
+                                    <i className="fa-solid fa-exclamation-circle text-3xl mb-3"></i>
+                                    <p><strong>Error:</strong> {error}</p>
+                                </div>
+                            )}
+                            {!isLoading && !error && results.length === 0 && (
+                                <div className="text-center text-gray-400">
+                                    <i className="fa-solid fa-folder-open text-3xl mb-3"></i>
+                                    <p>No relevant papers found for your query.</p>
+                                </div>
+                            )}
+                            {!isLoading && !error && results.length > 0 && (
+                                <div className="space-y-6">
+                                    {results.map(paper => (
+                                        <div key={paper.id} className="bg-gray-900/50 p-4 rounded-lg border border-gray-700">
+                                            <h3 className="font-bold text-lg text-indigo-400 mb-1">{paper.title}</h3>
+                                            <p className="text-sm text-gray-500 mb-2">{paper.authors} ({paper.year})</p>
+                                            <p className="text-gray-300 text-sm mb-4">{paper.summary}</p>
+                                            <div className="flex items-center space-x-3 mt-3">
+                                                <a href={`https://www.ncbi.nlm.nih.gov/pmc/articles/PMC${paper.id}/`}
+                                                   target="_blank" rel="noopener noreferrer"
+                                                   className="flex-1 text-center bg-gray-700 text-indigo-200 text-sm font-semibold px-4 py-2 rounded-md hover:bg-gray-600 transition-colors">
+                                                    Read Paper <i className="fa-solid fa-arrow-up-right-from-square ml-1 text-xs"></i>
+                                                </a>
+                                                <button onClick={() => onChatWithPaper(paper)}
+                                                        className="flex-1 text-center bg-indigo-600 text-white text-sm font-semibold px-4 py-2 rounded-md hover:bg-indigo-500 transition-colors">
+                                                    Chat with Paper <i className="fa-solid fa-comments ml-1 text-xs"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+        
+        // --- MAIN APP COMPONENT ---
+        const App = () => {
+            const [publications, setPublications] = useState([]);
+            const [knowledgeGraph, setKnowledgeGraph] = useState({ nodes: [], edges: [] }); // NEW: State for knowledge graph
+            const [isLoadingData, setIsLoadingData] = useState(true);
+            const [loadingError, setLoadingError] = useState(null);
+            const [searchTerm, setSearchTerm] = useState('');
+            const [selectedFilters, setSelectedFilters] = useState([]);
+            const [selectedPublication, setSelectedPublication] = useState(null);
+            const [sidebarOpen, setSidebarOpen] = useState(true);
+            const [activeLens, setActiveLens] = useState('default');
+            const [focusedStar, setFocusedStar] = useState(null);
+            const [pulsingConcept, setPulsingConcept] = useState(null);
+            const [hubInitialTab, setHubInitialTab] = useState('glance');
+            
+            // NEW: State for Gemini Search
+            const [isGeminiSearching, setIsGeminiSearching] = useState(false);
+            const [geminiSearchResults, setGeminiSearchResults] = useState(null);
+            const [geminiSearchError, setGeminiSearchError] = useState(null);
+            
+            const [minYear, maxYear] = useMemo(() => {
+                if (publications.length === 0) return [2000, 2025];
+                const years = publications.map(p => p.year).filter(y => !isNaN(y) && y > 1900);
+                return years.length > 0 ? [Math.min(...years), Math.max(...years)] : [2000, 2025];
+            }, [publications]);
+            const [temporalFilter, setTemporalFilter] = useState({ min: 0, max: 0});
+            useEffect(() => {
+                const loadData = async () => {
+                    try {
+                        // FIX: Changed paths to be root-relative for reliability
+                        const [pubResponse, graphResponse] = await Promise.all([
+                            fetch('/data/publications.json'),
+                            fetch('/data/knowledge_graph.json')
+                        ]);
+                        if (!pubResponse.ok || !graphResponse.ok) {
+                            throw new Error(`Failed to fetch data files. Status: Pubs ${pubResponse.status}, Graph ${graphResponse.status}`);
+                        }
+                        const publicationsData = await pubResponse.json();
+                        const knowledgeGraphData = await graphResponse.json();
+                        setKnowledgeGraph(knowledgeGraphData); // Store raw knowledge graph data
+                        const processedData = processRealData(publicationsData, knowledgeGraphData);
+                        
+                        setPublications(processedData);
+                        const years = processedData.map(p => p.year).filter(y => y && y > 1900);
+                        if (years.length > 0) {
+                            setTemporalFilter({ min: Math.min(...years), max: Math.max(...years) });
+                        } else {
+                            // Fallback if no valid years are found
+                            setTemporalFilter({ min: 2000, max: 2025 });
+                        }
+                    } catch (error) {
+                        console.error("Fatal Error: Could not load and process data.", error);
+                        setLoadingError(`Could not load data. Please check if the 'public/data' folder is accessible and contains valid JSON files. Details: ${error.message}`);
+                    } finally {
+                        setIsLoadingData(false);
+                    }
+                };
+                
+                loadData();
+            }, []);
+                            
+            // Effect to initialize the temporal filter once min/max years are known
+            useEffect(() => {
+                setTemporalFilter({ min: minYear, max: maxYear });
+            }, [minYear, maxYear]);
+            const allKeywords = useMemo(() => Array.from(new Set(publications.flatMap(p => p.keywords || []))).sort(), [publications]);
+            
+            // FIX: Removed searchTerm from filtering logic. Now only filters by selected keywords.
+            const filteredPublicationIds = useMemo(() => {
+                if (selectedFilters.length === 0) return null;
+                const filtered = publications.filter(p => {
+                    const matchesFilters = selectedFilters.every(f => p.keywords.includes(f));
+                    return matchesFilters;
+                });
+                return new Set(filtered.map(p => p.id));
+            }, [publications, selectedFilters]);
+            
+            const handleSetPulsingConcept = (concept) => {
+                setPulsingConcept(prev => prev === concept ? null : concept);
+            };
+
+            const handleChatFromSearch = (paper) => {
+                setGeminiSearchResults(null);
+                setGeminiSearchError(null);
+                setHubInitialTab('chat');
+                setSelectedPublication(paper);
+            };
+
+            // FIX: Enhanced Gemini search handler
+            const handleGeminiSearch = async () => {
+                if (!searchTerm.trim()) {
+                    setGeminiSearchError("Please enter a question or topic to search.");
+                    setGeminiSearchResults([]);
+                    return;
+                }
+                setIsGeminiSearching(true);
+                setGeminiSearchError(null);
+                setGeminiSearchResults([]);
+
+                const apiKey = getApiKey();
+                if (!apiKey) {
+                    setIsGeminiSearching(false);
+                    setGeminiSearchError("A Gemini API key is required for AI search. Refresh and paste one when prompted.");
+                    return;
+                }
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key=${apiKey}`;
+
+                const systemPrompt = `You are an expert research assistant specializing in space biology. Your task is to identify relevant scientific papers based on a user's question. You will be given a user question and a JSON object representing nodes from a knowledge graph. Each node contains information about concepts, organisms, etc., and a "paper_mentions" array listing the PMC IDs of papers that mention it.
+
+Instructions:
+1. Analyze the user's question to understand the key concepts.
+2. Search through the provided knowledge graph nodes to find all nodes whose "name", "normalized_name", or "provenance" are relevant to the concepts in the question.
+3. Collect all unique paper IDs from the "paper_mentions" array of all the matching nodes.
+4. Return ONLY a JSON object with a single key "paper_ids" containing an array of all the collected paper IDs as strings. If no papers are found, return an empty array. Do not include any other text, explanation, or markdown formatting. For example: {"paper_ids": ["PMC123456", "PMC789012"]}`;
+
+                const userQuery = `User Question: "${searchTerm}"\n\nKnowledge Graph Nodes: ${JSON.stringify(knowledgeGraph.nodes)}`;
+                
+                const payload = {
+                    contents: [{ parts: [{ text: userQuery }] }],
+                    systemInstruction: {
+                        parts: [{ text: systemPrompt }]
+                    },
+                    generationConfig: {
+                        responseMimeType: "application/json",
+                    }
+                };
+
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error?.message || `API request failed with status ${response.status}`);
+                    }
+
+                    const result = await response.json();
+                    const textResponse = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                    if (!textResponse) {
+                        throw new Error("Received an empty response from the AI.");
+                    }
+                    
+                    const parsedResponse = JSON.parse(textResponse);
+                    const paperIds = parsedResponse.paper_ids;
+
+                    if (Array.isArray(paperIds)) {
+                        const foundPapers = publications.filter(p => paperIds.includes(p.id));
+                        setGeminiSearchResults(foundPapers);
+                    } else {
+                        throw new Error("AI response did not contain a valid 'paper_ids' array.");
+                    }
+
+                } catch (error) {
+                    console.error("Gemini search failed:", error);
+                    setGeminiSearchError(error.message || "An unknown error occurred during the AI search.");
+                } finally {
+                    setIsGeminiSearching(false);
+                }
+            };
+            
+            if (isLoadingData || loadingError) return (
+                <div className="flex flex-col items-center justify-center min-h-screen text-center p-8">
+                    {loadingError ? (
+                        <>
+                            <i className="fa-solid fa-triangle-exclamation text-5xl text-red-400 mb-4"></i>
+                            <h2 className="text-2xl font-bold text-red-300 mb-2">Data Loading Failed</h2>
+                            <p className="max-w-xl text-gray-400">{loadingError}</p>
+                        </>
+                    ) : (
+                        <>
+                            <div className="loader"></div>
+                            <p className="mt-4 text-lg text-indigo-300">Calibrating the Knowledge Universe...</p>
+                        </>
+                    )}
+                </div>
+            );
+            return (
+                <div className="h-full w-full flex">
+                    <div className={`flex-shrink-0 sidebar-transition overflow-hidden ${sidebarOpen ? 'w-full max-w-sm' : 'w-0'}`}>
+                        <div className="p-4 sm:pt-6 pb-6 pl-6 pr-0 h-full flex flex-col w-full max-w-sm">
+                             <header className="text-left mb-6 flex-shrink-0">
+                                 <h1 className="text-3xl sm:text-4xl font-bold text-white tracking-tight">Star Engine</h1>
+                                 <p className="mt-1 text-md text-indigo-300">Navigate the Universe of Space Biology</p>
+                             </header>
+                             <div className="glass-effect rounded-xl p-4 sm:p-6 flex-grow overflow-y-auto no-scrollbar">
+                                 <div className="relative mb-4">
+                                     <i className="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 z-10"></i>
+                                     <input type="text" placeholder={`Ask a question or search ${publications.length} papers...`} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+                                         onKeyPress={e => e.key === 'Enter' && handleGeminiSearch()}
+                                         className="w-full bg-gray-900/50 border border-gray-600 rounded-lg py-3 pl-12 pr-12 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                                     <button onClick={handleGeminiSearch} title="Ask AI Assistant" className="absolute right-2 top-1/2 -translate-y-1/2 text-indigo-300 hover:text-white p-2 rounded-full transition-colors bg-gray-900/50 hover:bg-indigo-600 disabled:opacity-50" disabled={isGeminiSearching}>
+                                        <i className="fa-solid fa-wand-magic-sparkles"></i>
+                                     </button>
+                                 </div>
+                                 <div className="mb-4">
+                                     <h3 className="font-semibold mb-3 text-gray-300">Analytical Lenses</h3>
+                                     <div className="grid grid-cols-2 gap-2 text-sm">
+                                         {['Default', 'Temporal', 'Mission', 'Consensus'].map(l => {
+                                            const isConsensus = l === 'Consensus';
+                                            return (
+                                                <button 
+                                                    key={l} 
+                                                    onClick={() => !isConsensus && setActiveLens(l.toLowerCase())} 
+                                                    className={`px-3 py-2 rounded-md transition-colors ${activeLens === l.toLowerCase() ? 'tab-active' : 'tab-inactive'} ${isConsensus ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white/20'}`}
+                                                    disabled={isConsensus}
+                                                    title={isConsensus ? "Coming Soon" : ""}
+                                                >
+                                                    {l}{isConsensus ? ' (Beta)' : ''}
+                                                </button>
+                                            );
+                                        })}
+                                     </div>
+                                 </div>
+                                 {activeLens === 'temporal' && (
+                                     <div className="mb-4">
+                                         <h3 className="font-semibold mb-2 text-gray-300">Publication Year</h3>
+                                         <input type="range" min={minYear} max={maxYear} value={temporalFilter.max} onChange={e => setTemporalFilter({...temporalFilter, max: parseInt(e.target.value)})} className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer" />
+                                         <div className="flex justify-between text-xs text-gray-400 mt-1"><span>{minYear}</span><span>{temporalFilter.max}</span><span>{maxYear}</span></div>
+                                     </div>
+                                 )}
+                                 <details className="text-gray-300" open>
+                                     <summary className="cursor-pointer font-semibold">Filter by Keywords</summary>
+                                     <div className="flex flex-wrap gap-2 mt-4 max-h-80 overflow-y-auto">
+                                         {allKeywords.map(keyword => (<button key={keyword} onClick={() => setSelectedFilters(p => p.includes(keyword) ? p.filter(k => k !== keyword) : [...p, keyword])} className={`px-3 py-1 text-sm font-medium rounded-full transition-all ${selectedFilters.includes(keyword) ? 'bg-indigo-500 text-white' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}>{keyword}</button>))}
+                                     </div>
+                                 </details>
+                             </div>
+                        </div>
+                    </div>
+                    <div className="relative flex-1 h-full">
+                         <div className="absolute top-1/2 -translate-y-1/2 left-0 z-20">
+                             <button onClick={() => setSidebarOpen(!sidebarOpen)} className="glass-effect px-2 py-8 rounded-r-lg">
+                                 <i className={`fa-solid ${sidebarOpen ? 'fa-chevron-left' : 'fa-chevron-right'}`}></i>
+                             </button>
+                         </div>
+                         <GalaxyView 
+                             publications={publications} 
+                             onStarClick={(star) => { setFocusedStar(star); setPulsingConcept(null); }}
+                             onStarDoubleClick={(pub) => { setHubInitialTab('glance'); setSelectedPublication(pub); }}
+                             onBackgroundClick={() => { setFocusedStar(null); setPulsingConcept(null); }}
+                             onPlanetClick={handleSetPulsingConcept}
+                             focusedStar={focusedStar}
+                             pulsingConcept={pulsingConcept}
+                             filters={{filteredIds: filteredPublicationIds}}
+                             temporalFilter={temporalFilter}
+                             lens={activeLens}
+                         />
+                    </div>
+                        {selectedPublication && <ResearchHub publication={selectedPublication} onClose={() => setSelectedPublication(null)} initialTab={hubInitialTab} />}
+                        {(isGeminiSearching || geminiSearchResults || geminiSearchError) && 
+                          <GeminiSearchResultsModal 
+                            results={geminiSearchResults || []} 
+                            isLoading={isGeminiSearching} 
+                            error={geminiSearchError} 
+                            onClose={() => {setGeminiSearchResults(null); setGeminiSearchError(null);}} 
+                            onChatWithPaper={handleChatFromSearch}
+                          />
+                        }
+                </div>
+            );
+        };
+        const container = document.getElementById('root');
+        const root = ReactDOM.createRoot(container);
+        root.render(<App />);
+    </script>
+</body>
+</html>
+
