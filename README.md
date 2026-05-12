@@ -21,8 +21,8 @@ The core of the engine is an intelligent retrieval and extraction pipeline:
 - **Knowledge Graph (KG) & GraphRAG** — The query is entity-linked to KG concept nodes (Organisms, Molecules, Conditions, etc.). The 1-hop subgraph boosts papers that share concepts with the query, and the matched stars **pulse in the 3D galaxy** as you watch the answer stream. The knowledge graph is load-bearing, not just decorative, and can be explored interactively via the 2D/3D visualization UI.
 - **Listwise LLM rerank** — top-20 candidates collapsed to top-5 with
   one structured-JSON Gemini call.
-- **Streaming generation + conversation memory** — Gemini SSE,
-  cancellable, last-6-turns history sent with every reply.
+- **Generation + conversation memory** — Gemini `gemini-3.1-flash-lite`,
+  last-6-turns history sent with every reply.
 - **Bring your own key (BYOK)** — your Gemini API key is stored only
   in your browser's `localStorage`. Nothing ever ships with secrets.
 
@@ -35,7 +35,7 @@ user's Gemini key is reserved for the rerank and generation steps.
 - **Frontend** — React 18 · Three.js · Vite · Tailwind CSS
 - **Retrieval (browser)** — `@xenova/transformers` (MiniLM-L6-v2 in WASM),
   hand-rolled BM25, brute-force cosine over fp16 typed arrays, Zustand
-- **Generation** — Google Gemini Flash, streaming SSE
+- **Generation** — Google Gemini 3.1 Flash-Lite (`gemini-3.1-flash-lite`)
 - **Offline indexing (Python / Colab)** — `sentence-transformers`,
   `rank-bm25`, `lxml`, section-aware JATS chunking
 - **CI / hosting** — GitHub Actions → GitHub Pages
@@ -156,4 +156,4 @@ public/data/   publications.json, knowledge_graph.json, kg_lean.json,
 
 ## License
 
-[MIT](LICENSE). Data attribution details inside the license file.
+[Apache 2.0](LICENSE). Data attribution details inside the license file.
