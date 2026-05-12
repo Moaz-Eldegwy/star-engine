@@ -32,9 +32,13 @@ function buildPayload({ system, user, history, json, schema }) {
   const contents = [];
   if (Array.isArray(history)) {
     for (const turn of history) {
+      const part = { text: turn.text };
+      if (turn.thoughtSignature) {
+        part.thoughtSignature = turn.thoughtSignature;
+      }
       contents.push({
         role: turn.role === 'user' ? 'user' : 'model',
-        parts: [{ text: turn.text }],
+        parts: [part],
       });
     }
   }
@@ -79,8 +83,19 @@ export async function generateContent({
   }
 
   const result = await res.json();
-  const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error('Gemini returned an empty response.');
+  const parts = result.candidates?.[0]?.content?.parts || [];
+  let text = '';
+  for (const p of parts) {
+    if (p.text) text += p.text;
+  }
+  if (!text) {
+    const finishReason = result.candidates?.[0]?.finishReason;
+    if (finishReason && finishReason !== 'STOP') {
+      text = `[Stopped: ${finishReason}]`;
+    } else {
+      throw new Error('Gemini returned an empty response.');
+    }
+  }
   return json ? JSON.parse(text) : text;
 }
 
@@ -128,23 +143,48 @@ export async function* streamGenerateContent({
     while ((frameEnd = buffer.indexOf('\n\n')) >= 0) {
       const frame = buffer.slice(0, frameEnd);
       buffer = buffer.slice(frameEnd + 2);
+
+      // SSE frames are separated by blank lines.
+      // Each Gemini frame has exactly ONE `data: <json>` line.
+      // We pick the last non-empty data line to avoid stray whitespace issues.
+      let dataPayload = '';
       for (const line of frame.split('\n')) {
-        if (!line.startsWith('data:')) continue;
-        const json = line.slice(5).trim();
-        if (!json || json === '[DONE]') continue;
-        let parsed;
-        try {
-          parsed = JSON.parse(json);
-        } catch {
-          continue; // Ignore partial JSON parses
+        if (line.startsWith('data:')) {
+          const candidate = line.slice(5).trim();
+          if (candidate) dataPayload = candidate;
         }
-        
-        if (parsed.error) {
+      }
+      if (!dataPayload || dataPayload === '[DONE]') continue;
+
+      let parsed;
+      try {
+        parsed = JSON.parse(dataPayload);
+      } catch (err) {
+        console.warn('Failed to parse SSE frame:', dataPayload);
+        continue; // Ignore partial or invalid JSON
+      }
+
+      if (parsed.error) {
           throw new Error(parsed.error.message || 'Stream returned an error object.');
         }
-        const delta = parsed?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (delta) yield delta;
+        const candidate = parsed?.candidates?.[0];
+        const parts = candidate?.content?.parts || [];
+        let delta = '';
+        let ts = null;
+        for (const p of parts) {
+          if (p.text) delta += p.text;
+          if (p.thoughtSignature) ts = p.thoughtSignature;
+        }
+        
+        if (candidate?.finishReason && candidate.finishReason !== 'STOP' && candidate.finishReason !== 'MAX_TOKENS') {
+          delta += ` [Stopped: ${candidate.finishReason}]`;
+        }
+
+        // Always yield if there's text. Yield thought-only chunks too so
+        // the caller can track signatures even when delta is empty.
+        if (delta !== undefined) {
+          yield { text: delta, thoughtSignature: ts };
+        }
       }
     }
   }
-}

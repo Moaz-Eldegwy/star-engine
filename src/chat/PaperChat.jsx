@@ -10,7 +10,7 @@
 // in src/rag/chunks.js — wiring this requires one more pass.
 
 import { useEffect, useRef, useState } from 'react';
-import { MissingApiKeyError, streamGenerateContent } from '../rag/gemini.js';
+import { MissingApiKeyError, generateContent } from '../rag/gemini.js';
 import { fetchPaperText } from '../rag/paperText.js';
 import { useStore } from '../state/store.js';
 
@@ -51,6 +51,7 @@ export function PaperChat({ publication }) {
         ]);
       } catch (err) {
         if (err.name === 'AbortError') return;
+        console.error('Failed to fetch paper text:', err);
         setPaperText(null);
         setMessages([
           {
@@ -83,7 +84,7 @@ export function PaperChat({ publication }) {
       .slice(1)
       .slice(-MAX_HISTORY_TURNS)
       .slice(0, -1) // drop the just-sent user turn — that's the `user` field
-      .map((m) => ({ role: m.sender === 'user' ? 'user' : 'model', text: m.text }));
+      .map((m) => ({ role: m.sender === 'user' ? 'user' : 'model', text: m.text, thoughtSignature: m.thoughtSignature }));
 
     const context = paperText
       ? `Full Text (Excerpt): ${paperText}`
@@ -93,24 +94,15 @@ export function PaperChat({ publication }) {
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     try {
-      let acc = '';
-      for await (const delta of streamGenerateContent({
+      const responseText = await generateContent({
         system: SYSTEM_PROMPT,
         user: userPrompt,
         history,
         signal: ctrl.signal,
-      })) {
-        acc += delta;
-        // Update the last (AI, streaming) message with the accumulated text.
-        setMessages((prev) => {
-          const next = prev.slice();
-          next[next.length - 1] = { text: acc, sender: 'ai', streaming: true };
-          return next;
-        });
-      }
+      });
       setMessages((prev) => {
         const next = prev.slice();
-        next[next.length - 1] = { text: acc || '(no response)', sender: 'ai' };
+        next[next.length - 1] = { text: responseText || '(no response)', sender: 'ai' };
         return next;
       });
     } catch (err) {
