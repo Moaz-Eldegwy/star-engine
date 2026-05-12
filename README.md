@@ -46,7 +46,7 @@ user's Gemini key is reserved for the rerank and generation steps.
 ## Live demo
 
 - Production: <https://starengineai.space>
-- GitHub Pages mirror: `https://<your-github-username>.github.io/StarEngine/`
+- GitHub Pages mirror: <https://moaz-eldegwy.github.io/star-engine/>
 
 Both URLs serve the same `dist/` (Vite is configured with `base: './'`).
 The CI pipeline at `.github/workflows/deploy.yml` builds once and
@@ -55,8 +55,8 @@ publishes to both targets in parallel on every push to `main`.
 ## Run locally
 
 ```bash
-git clone https://github.com/<your-github-username>/StarEngine
-cd StarEngine
+git clone https://github.com/Moaz-Eldegwy/star-engine
+cd star-engine
 npm install
 npm run dev
 ```
