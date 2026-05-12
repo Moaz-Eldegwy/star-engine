@@ -10,6 +10,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { GalaxyView } from './galaxy/GalaxyView.jsx';
+import { KnowledgeGraphView } from './galaxy/KnowledgeGraphView.jsx';
 import { processRealData } from './galaxy/processRealData.js';
 import { assetUrl } from './rag/assetUrl.js';
 import { hasApiKey } from './rag/apiKey.js';
@@ -20,7 +21,9 @@ import { GeminiSearchResultsModal } from './chat/GeminiSearchResultsModal.jsx';
 import { ResearchHub } from './chat/ResearchHub.jsx';
 import { ApiKeyModal } from './ui/ApiKeyModal.jsx';
 import { HowItWorks } from './ui/HowItWorks.jsx';
+import { KeywordsModal } from './ui/KeywordsModal.jsx';
 import { useStore } from './state/store.js';
+import { ErrorBoundary } from './components/ErrorBoundary.jsx';
 
 export default function App() {
   // --- Selectors from store ---
@@ -63,6 +66,8 @@ export default function App() {
   } = useStore();
 
   const [showHowItWorks, setShowHowItWorks] = useState(false);
+  const [showKeywordsModal, setShowKeywordsModal] = useState(false);
+  const [graphMode, setGraphMode] = useState(null);
 
   // --- One-time data load ---
   useEffect(() => {
@@ -236,14 +241,19 @@ export default function App() {
       {/* Sidebar */}
       <div
         className={`flex-shrink-0 sidebar-transition overflow-hidden ${
-          sidebarOpen ? 'w-full max-w-sm' : 'w-0'
+          sidebarOpen && !graphMode ? 'w-full max-w-sm' : 'w-0'
         }`}
       >
         <div className="p-4 sm:pt-6 pb-6 pl-6 pr-0 h-full flex flex-col w-full max-w-sm">
           <header className="text-left mb-6 flex-shrink-0">
-            <h1 className="text-3xl sm:text-4xl font-bold text-white tracking-tight">
-              Star Engine
-            </h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl sm:text-4xl font-bold text-white tracking-tight">
+                Star Engine
+              </h1>
+              <span className="bg-indigo-600/30 text-indigo-300 border border-indigo-500/50 text-[10px] sm:text-xs font-bold px-2 py-0.5 rounded-full uppercase tracking-wider mt-1">
+                GraphRAG Powered
+              </span>
+            </div>
             <p className="mt-1 text-md text-indigo-300">
               Navigate the Universe of Space Biology
             </p>
@@ -254,6 +264,9 @@ export default function App() {
               <i className="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 z-10"></i>
               <input
                 type="text"
+                name="star-engine-search"
+                autoComplete="off"
+                spellCheck="false"
                 placeholder={`Ask a question or search ${publications.length} papers…`}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
@@ -267,9 +280,8 @@ export default function App() {
                 disabled={isGeminiSearching}
               >
                 <i
-                  className={`fa-solid ${
-                    isGeminiSearching ? 'fa-spinner animate-spin' : 'fa-wand-magic-sparkles'
-                  }`}
+                  className={`fa-solid ${isGeminiSearching ? 'fa-spinner animate-spin' : 'fa-wand-magic-sparkles'
+                    }`}
                 ></i>
               </button>
             </div>
@@ -284,9 +296,8 @@ export default function App() {
                     <button
                       key={l}
                       onClick={() => !isConsensus && setActiveLens(l.toLowerCase())}
-                      className={`px-3 py-2 rounded-md transition-colors ${
-                        activeLens === l.toLowerCase() ? 'tab-active' : 'tab-inactive'
-                      } ${isConsensus ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white/20'}`}
+                      className={`px-3 py-2 rounded-md transition-colors ${activeLens === l.toLowerCase() ? 'tab-active' : 'tab-inactive'
+                        } ${isConsensus ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white/20'}`}
                       disabled={isConsensus}
                       title={isConsensus ? 'Coming Soon' : ''}
                     >
@@ -324,24 +335,31 @@ export default function App() {
             <details className="text-gray-300" open>
               <summary className="cursor-pointer font-semibold">Filter by Keywords</summary>
               <div className="flex flex-wrap gap-2 mt-4 max-h-80 overflow-y-auto">
-                {allKeywords.map((keyword) => (
+                {allKeywords.slice(0, 10).map((keyword) => (
                   <button
                     key={keyword}
                     onClick={() => toggleFilter(keyword)}
-                    className={`px-3 py-1 text-sm font-medium rounded-full transition-all ${
-                      selectedFilters.includes(keyword)
-                        ? 'bg-indigo-500 text-white'
-                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                    }`}
+                    className={`px-3 py-1 text-sm font-medium rounded-full transition-all ${selectedFilters.includes(keyword)
+                      ? 'bg-indigo-500 text-white'
+                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                      }`}
                   >
                     {keyword}
                   </button>
                 ))}
+                {allKeywords.length > 20 && (
+                  <button
+                    onClick={() => setShowKeywordsModal(true)}
+                    className="px-3 py-1 text-sm font-medium rounded-full transition-all bg-gray-800 text-indigo-300 hover:bg-gray-700 hover:text-indigo-200 border border-gray-700 hover:border-indigo-500/50"
+                  >
+                    + {allKeywords.length - 20} More
+                  </button>
+                )}
               </div>
             </details>
 
             {/* Settings shortcut */}
-            <div className="mt-6 border-t border-gray-700 pt-4 text-xs text-gray-500 flex items-center justify-between">
+            <div className="mt-6 border-t border-gray-700 pt-4 text-xs text-gray-500 flex flex-col gap-2">
               <div className="flex items-center gap-4">
                 <button
                   onClick={() => setShowApiKeyModal(true)}
@@ -358,7 +376,7 @@ export default function App() {
                   <i className="fa-solid fa-circle-question mr-1"></i> How it works
                 </button>
               </div>
-              <span>
+              <span className="text-gray-600">
                 {publications.length} papers · {knowledgeGraph.nodes.length} graph nodes
               </span>
             </div>
@@ -368,33 +386,64 @@ export default function App() {
 
       {/* Galaxy + toggle */}
       <div className="relative flex-1 h-full">
-        <div className="absolute top-1/2 -translate-y-1/2 left-0 z-20">
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="glass-effect px-2 py-8 rounded-r-lg"
-          >
-            <i className={`fa-solid ${sidebarOpen ? 'fa-chevron-left' : 'fa-chevron-right'}`}></i>
-          </button>
-        </div>
-        <GalaxyView
-          publications={publications}
-          onStarClick={(star) => {
-            setFocusedStar(star);
-            setPulsingConcept(null);
-          }}
-          onStarDoubleClick={(pub) => openHub(pub, 'glance')}
-          onBackgroundClick={() => {
-            setFocusedStar(null);
-            setPulsingConcept(null);
-          }}
-          onPlanetClick={handleSetPulsingConcept}
-          focusedStar={focusedStar}
-          pulsingConcept={pulsingConcept}
-          pulsingIds={pulsingIds}
-          filters={{ filteredIds: filteredPublicationIds }}
-          temporalFilter={temporalFilter}
-          lens={activeLens}
-        />
+        {!graphMode && (
+          <div className="absolute top-1/2 -translate-y-1/2 left-0 z-20">
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="glass-effect px-2 py-8 rounded-r-lg"
+            >
+              <i className={`fa-solid ${sidebarOpen ? 'fa-chevron-left' : 'fa-chevron-right'}`}></i>
+            </button>
+          </div>
+        )}
+
+        {/* Knowledge Graph Buttons */}
+        {!graphMode && (
+          <div className="absolute top-4 right-4 z-20 flex gap-3">
+            <button
+              onClick={() => setGraphMode('2D')}
+              className="glass-effect px-4 py-2 rounded-lg text-sm text-indigo-300 hover:text-white hover:bg-indigo-600/20 transition-all font-medium border border-gray-600/50 hover:border-indigo-500/50 shadow-lg"
+            >
+              <i className="fa-solid fa-project-diagram mr-2"></i> 2D Graph
+            </button>
+            <button
+              onClick={() => setGraphMode('3D')}
+              className="glass-effect px-4 py-2 rounded-lg text-sm text-indigo-300 hover:text-white hover:bg-indigo-600/20 transition-all font-medium border border-gray-600/50 hover:border-indigo-500/50 shadow-lg"
+            >
+              <i className="fa-solid fa-cube mr-2"></i> 3D Graph
+            </button>
+          </div>
+        )}
+
+        {graphMode ? (
+          <ErrorBoundary>
+            <KnowledgeGraphView
+              data={knowledgeGraph}
+              mode={graphMode}
+              onClose={() => setGraphMode(null)}
+            />
+          </ErrorBoundary>
+        ) : (
+          <GalaxyView
+            publications={publications}
+            onStarClick={(star) => {
+              setFocusedStar(star);
+              setPulsingConcept(null);
+            }}
+            onStarDoubleClick={(pub) => openHub(pub, 'glance')}
+            onBackgroundClick={() => {
+              setFocusedStar(null);
+              setPulsingConcept(null);
+            }}
+            onPlanetClick={handleSetPulsingConcept}
+            focusedStar={focusedStar}
+            pulsingConcept={pulsingConcept}
+            pulsingIds={pulsingIds}
+            filters={{ filteredIds: filteredPublicationIds }}
+            temporalFilter={temporalFilter}
+            lens={activeLens}
+          />
+        )}
       </div>
 
       {selectedPublication && (
@@ -423,6 +472,14 @@ export default function App() {
         open={showApiKeyModal}
         onClose={() => setShowApiKeyModal(false)}
         onSaved={() => setShowApiKeyModal(false)}
+      />
+
+      <KeywordsModal
+        open={showKeywordsModal}
+        onClose={() => setShowKeywordsModal(false)}
+        keywords={allKeywords}
+        selectedFilters={selectedFilters}
+        toggleFilter={toggleFilter}
       />
     </div>
   );

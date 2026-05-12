@@ -58,6 +58,9 @@ export function GalaxyView({
   const clickTimeoutRef = useRef(null);
   const starTextureRef = useRef(null);
   const focusedGroupRef = useRef(null);
+  const planetLabelsRef = useRef([]);
+  const planetLabelsDataRef = useRef([]);
+  const returningToCenterRef = useRef(false);
   const [constellationLabels, setConstellationLabels] = useState([]);
   const [planetLabels, setPlanetLabels] = useState([]);
 
@@ -97,9 +100,9 @@ export function GalaxyView({
       75,
       mountNode.clientWidth / mountNode.clientHeight,
       0.1,
-      2000,
+      3000,
     );
-    camera.position.z = 500;
+    camera.position.set(0, 600, 800);
     cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -125,10 +128,22 @@ export function GalaxyView({
       const { focusedStar: liveFocused } = callbacksRef.current;
       const focusedStarData = liveFocused ? starsRef.current.get(liveFocused.id) : null;
       if (focusedStarData) {
-        const offset = new THREE.Vector3(0, 0, 80);
-        const targetPosition = focusedStarData.position.clone().add(offset);
+        returningToCenterRef.current = false;
+        let direction = camera.position.clone().sub(focusedStarData.position);
+        if (direction.lengthSq() < 0.01) direction.set(0, 0, 1);
+        direction.normalize();
+        const targetPosition = focusedStarData.position.clone().add(direction.multiplyScalar(150));
         camera.position.lerp(targetPosition, 0.04);
         controls.target.lerp(focusedStarData.position, 0.04);
+      } else if (returningToCenterRef.current) {
+        controls.target.lerp(new THREE.Vector3(0, 0, 0), 0.04);
+        const overviewPos = camera.position.clone().normalize().multiplyScalar(1000);
+        // Force a slight top-down angle for the overview
+        overviewPos.y = Math.max(overviewPos.y, 400); 
+        camera.position.lerp(overviewPos, 0.03);
+        if (controls.target.lengthSq() < 1) {
+          returningToCenterRef.current = false;
+        }
       }
       controls.update();
 
@@ -146,9 +161,19 @@ export function GalaxyView({
 
       if (focusedGroupRef.current) {
         focusedGroupRef.current.rotation.y += 0.005;
-        setPlanetLabels((prev) =>
-          prev.map((p) => ({ ...p, position: p.object.getWorldPosition(new THREE.Vector3()) })),
-        );
+        if (planetLabelsRef.current && planetLabelsDataRef.current) {
+          planetLabelsDataRef.current.forEach((label, i) => {
+            const el = planetLabelsRef.current[i];
+            if (el && mountNode) {
+              const pos = label.object.getWorldPosition(new THREE.Vector3());
+              const vector = pos.project(camera);
+              const x = ((vector.x + 1) / 2) * mountNode.clientWidth;
+              const y = ((-vector.y + 1) / 2) * mountNode.clientHeight;
+              el.style.left = `${x}px`;
+              el.style.top = `${y}px`;
+            }
+          });
+        }
       }
       renderer.render(scene, camera);
     };
@@ -207,6 +232,7 @@ export function GalaxyView({
             cbs.onStarClick(intersects[0].object.userData);
           } else if (!event.target.classList.contains('planet-label')) {
             cbs.onBackgroundClick();
+            returningToCenterRef.current = true;
           }
           clickTimeoutRef.current = null;
         }, 250);
@@ -248,9 +274,9 @@ export function GalaxyView({
         : CONSTELLATION_KEYWORDS.reduce((acc, key, i) => {
             const angle = (i / CONSTELLATION_KEYWORDS.length) * Math.PI * 2;
             acc[key] = {
-              x: 350 * Math.cos(angle),
-              y: 100 * Math.sin(i * Math.PI),
-              z: 350 * Math.sin(angle),
+              x: 450 * Math.cos(angle),
+              y: (i % 2 === 0 ? 150 : -150),
+              z: 450 * Math.sin(angle),
             };
             return acc;
           }, {});
@@ -296,10 +322,13 @@ export function GalaxyView({
       const isFilteredOut = filters.filteredIds !== null && !filters.filteredIds.has(p.id);
       star.visible = isVisibleByYear && !isFilteredOut;
       // Pulse a star if (a) the user clicked a "planet" matching one of
-      // its keywords, OR (b) it appears in the current retrieval result
+      // its keywords or concepts, OR (b) it appears in the current retrieval result
       // set (GraphRAG-driven visual citation linking).
       star.isPulsing = Boolean(
-        (pulsingConcept && p.keywords.includes(pulsingConcept)) ||
+        (pulsingConcept && (
+          (p.keywords && p.keywords.includes(pulsingConcept)) ||
+          (p.concepts && p.concepts.some(c => c.name === pulsingConcept))
+        )) ||
           (pulsingIds && pulsingIds.has(p.id)),
       );
 
@@ -345,6 +374,7 @@ export function GalaxyView({
         });
         scene.add(group);
         focusedGroupRef.current = group;
+        planetLabelsDataRef.current = newPlanetLabels;
         setPlanetLabels(newPlanetLabels);
       }
     } else {
@@ -395,13 +425,13 @@ export function GalaxyView({
             canvasRef={mountRef}
           />
         ))}
-        {planetLabels.map((label) => {
-          const screenPos = projectToScreen(label.position, cameraRef.current);
+        {planetLabels.map((label, i) => {
           return (
             <div
               key={label.name}
+              ref={(el) => (planetLabelsRef.current[i] = el)}
               className="planet-label"
-              style={{ left: `${screenPos.x}px`, top: `${screenPos.y}px` }}
+              style={{ left: '-9999px', top: '-9999px' }}
               onClick={(e) => {
                 e.stopPropagation();
                 onPlanetClick(label.name);
