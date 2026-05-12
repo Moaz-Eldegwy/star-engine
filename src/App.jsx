@@ -246,14 +246,9 @@ export default function App() {
       >
         <div className="p-4 sm:pt-6 pb-6 pl-6 pr-0 h-full flex flex-col w-full max-w-sm">
           <header className="text-left mb-6 flex-shrink-0">
-            <div className="flex items-center gap-3">
-              <h1 className="text-3xl sm:text-4xl font-bold text-white tracking-tight">
-                Star Engine
-              </h1>
-              <span className="bg-indigo-600/30 text-indigo-300 border border-indigo-500/50 text-[10px] sm:text-xs font-bold px-2 py-0.5 rounded-full uppercase tracking-wider mt-1">
-                GraphRAG Powered
-              </span>
-            </div>
+            <h1 className="text-3xl sm:text-4xl font-bold text-white tracking-tight">
+              Star Engine
+            </h1>
             <p className="mt-1 text-md text-indigo-300">
               Navigate the Universe of Space Biology
             </p>

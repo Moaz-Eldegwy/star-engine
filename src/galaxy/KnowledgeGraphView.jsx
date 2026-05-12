@@ -8,6 +8,7 @@ export function KnowledgeGraphView({ data, mode, onClose }) {
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const containerRef = useRef(null);
   const [loadingProgress, setLoadingProgress] = useState(0);
+  const [isBuilding, setIsBuilding] = useState(true);
   const [showLinks, setShowLinks] = useState(true);
   const [showInfoModal, setShowInfoModal] = useState(false);
 
@@ -39,7 +40,7 @@ export function KnowledgeGraphView({ data, mode, onClose }) {
       let currentEdges = [];
       const nodeSet = new Set();
       
-      const batchSize = 1000;
+      const batchSize = 1500; // Increased batch size for faster loading and less layout thrashing
       
       for (let i = 0; i < allNodes.length; i += batchSize) {
         if (isCancelled) break;
@@ -67,14 +68,31 @@ export function KnowledgeGraphView({ data, mode, onClose }) {
         setGraphData({ nodes: currentNodes, links: currentEdges });
         setLoadingProgress(Math.min(100, Math.floor((currentNodes.length / allNodes.length) * 100)));
         
-        await new Promise(r => setTimeout(r, 100));
+        await new Promise(r => setTimeout(r, 150));
       }
-      if (!isCancelled) setLoadingProgress(100);
+      if (!isCancelled) {
+        setLoadingProgress(100);
+        setIsBuilding(false);
+      }
     };
     
     runProgressive();
     return () => { isCancelled = true; };
   }, [data]);
+
+  // Apply ultra-performance physics settings when the graph mounts
+  useEffect(() => {
+    if (graphRef.current && graphRef.current.d3Force) {
+      const chargeForce = graphRef.current.d3Force('charge');
+      if (chargeForce) {
+        // Stop calculating repulsion for nodes far away from each other. 
+        // This takes physics from O(N^2) to near O(N) performance!
+        chargeForce.distanceMax(250); 
+        // Increase the Barnes-Hut theta for faster approximation
+        chargeForce.theta(1.5);
+      }
+    }
+  }, [mode, containerSize.width, isBuilding]);
 
   // Handle resizing with ResizeObserver for robust layout calculation
   useEffect(() => {
@@ -200,15 +218,15 @@ export function KnowledgeGraphView({ data, mode, onClose }) {
               graphData={graphData}
               nodeLabel={NodeLabel}
               nodeColor={getNodeColor}
-              nodeRelSize={4}
+              nodeRelSize={3}
               linkColor={() => '#374151'}
               linkOpacity={showLinks ? 0.3 : 0}
               backgroundColor="#030712"
               warmupTicks={0}
-              cooldownTicks={150}
+              cooldownTicks={120}
               onEngineStop={() => { if(graphRef.current && graphRef.current.zoomToFit) graphRef.current.zoomToFit(400); }}
               enableNodeDrag={false}
-              enablePointerInteraction={true}
+              enablePointerInteraction={!isBuilding}
             />
           ) : (
             <ForceGraph3D
@@ -218,16 +236,17 @@ export function KnowledgeGraphView({ data, mode, onClose }) {
               graphData={graphData}
               nodeLabel={NodeLabel}
               nodeColor={getNodeColor}
-              nodeRelSize={4}
+              nodeRelSize={3}
               linkColor={() => '#374151'}
               linkOpacity={showLinks ? 0.3 : 0}
               backgroundColor="#030712"
-              nodeResolution={8}
-              linkResolution={2}
+              nodeResolution={4}
+              linkResolution={1}
               warmupTicks={0}
-              cooldownTicks={150}
+              cooldownTicks={120}
               onEngineStop={() => { if(graphRef.current && graphRef.current.zoomToFit) graphRef.current.zoomToFit(400); }}
               enableNodeDrag={false}
+              enablePointerInteraction={!isBuilding}
             />
           )
         )}
