@@ -1,7 +1,8 @@
-# Star Engine
+# Star Engine: NASA Space Biology AI Engine (RAG & Knowledge Graph)
 
 <p align="center">
-  <strong>A 3D-galaxy exploration of 494 NASA space-biology papers — with hybrid + GraphRAG retrieval that runs entirely in your browser.</strong>
+  <strong>An interactive 3D AI-powered search engine built for the NASA Space Apps Challenge 2025: <em>"Build a Space Biology Knowledge Engine"</em>.</strong><br>
+  Explore 494 NASA space-biology papers with an advanced hybrid RAG and Knowledge Graph retrieval system running entirely in your browser.
 </p>
 
 <p align="center">
@@ -14,16 +15,12 @@
 
 ---
 
-Star Engine started as a NASA Space Apps 2025 submission and grew into a
-portfolio piece for modern RAG over a knowledge graph. The retrieval
-side is the interesting part:
+This project was developed for the **NASA Space Apps Challenge 2025** to tackle the *"Build a Space Biology Knowledge Engine"* challenge. It serves as a comprehensive portfolio piece demonstrating state-of-the-art AI, Retrieval-Augmented Generation (RAG), and data visualization. 
 
-- **Hybrid retrieval** — BM25 + MiniLM dense embeddings, fused with
-  Reciprocal Rank Fusion (k = 60).
-- **GraphRAG** — the query is entity-linked to KG concept nodes; the
-  1-hop subgraph boosts papers that share concepts with the query, and
-  the matched stars **pulse in the 3D galaxy** as you watch the answer
-  stream. The knowledge graph is load-bearing, not decorative.
+The core of the engine is an intelligent retrieval and extraction pipeline:
+
+- **Hybrid retrieval** — BM25 + MiniLM dense embeddings, fused with Reciprocal Rank Fusion (k = 60).
+- **Knowledge Graph (KG) & GraphRAG** — The query is entity-linked to KG concept nodes (Organisms, Molecules, Conditions, etc.). The 1-hop subgraph boosts papers that share concepts with the query, and the matched stars **pulse in the 3D galaxy** as you watch the answer stream. The knowledge graph is load-bearing, not just decorative, and can be explored interactively via the 2D/3D visualization UI.
 - **Listwise LLM rerank** — top-20 candidates collapsed to top-5 with
   one structured-JSON Gemini call.
 - **Streaming generation + conversation memory** — Gemini SSE,
