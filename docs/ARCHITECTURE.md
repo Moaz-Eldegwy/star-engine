@@ -37,13 +37,14 @@
 SB_publication_PMC.csv
         │
         ▼
-notebooks/00_legacy_pipeline.ipynb
+[ original Space Apps 2025 pipeline — preserved in the initial git
+  commit (Papers_Extraction_and_Processing.ipynb) ]
   PMC OAI fetch → JATS XML → publications.json (494 papers)
   Gemini extraction → per-paper graph_extract.json
   Consolidation → knowledge_graph.json (6,350 nodes / 13,030 edges)
         │
         ▼
-notebooks/03_build_rag_index.ipynb
+notebooks/build_rag_index.ipynb
   ├─→ Section-aware chunking
   │     JATS <sec>/<title>/<p> walk → 600-token windows w/ 100-token
   │     sentence-boundary overlap → chunks/{0000..0009}.jsonl, sharded
@@ -182,7 +183,7 @@ can't see it doing work.
 
 ## Evaluation
 
-A Recall@10 starter eval lives in `notebooks/03_build_rag_index.ipynb`
+A Recall@10 starter eval lives in `notebooks/build_rag_index.ipynb`
 (cell 14). Six hand-picked `(query, gold-pmc_id)` pairs scored against
 each retrieval method. Expand to 20+ before quoting numbers.
 
@@ -263,8 +264,7 @@ star-engine/
     state/     store.js (zustand)
     ui/        ApiKeyModal.jsx, MarkdownRenderer.jsx, HowItWorks.jsx
   notebooks/
-    00_legacy_pipeline.ipynb                    fetch → JATS → KG
-    03_build_rag_index.ipynb                    chunks + embeddings + BM25 + eval
+    build_rag_index.ipynb                       chunks + embeddings + BM25 + eval
   .github/workflows/deploy.yml                  GH Pages + Hostinger FTP
   docs/ARCHITECTURE.md                          (you are here)
   README.md, LICENSE (MIT)

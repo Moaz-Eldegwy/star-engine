@@ -198,7 +198,7 @@ export default function App() {
       console.error('Hybrid retrieval failed:', err);
       // Surface common artifact-missing errors with a friendlier hint.
       const msg = /HTTP 404|f16\.bin|bm25\.json/.test(err.message)
-        ? `Retrieval artifacts not found. Run notebooks/03_build_rag_index.ipynb and commit the produced files under public/data/. (Details: ${err.message})`
+        ? `Retrieval artifacts not found. Run notebooks/build_rag_index.ipynb and commit the produced files under public/data/. (Details: ${err.message})`
         : err.message || 'An unknown error occurred during retrieval.';
       setGeminiSearchState({
         isGeminiSearching: false,

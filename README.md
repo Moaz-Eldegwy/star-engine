@@ -9,7 +9,7 @@
   &nbsp;·&nbsp;
   <a href="docs/ARCHITECTURE.md">Architecture</a>
   &nbsp;·&nbsp;
-  <a href="notebooks/03_build_rag_index.ipynb">Indexing notebook</a>
+  <a href="notebooks/build_rag_index.ipynb">Indexing notebook</a>
 </p>
 
 ---
@@ -77,13 +77,15 @@ The retrieval artifacts (chunks, embeddings, BM25 postings, lean KG)
 are produced by a single notebook:
 
 ```
-notebooks/03_build_rag_index.ipynb
+notebooks/build_rag_index.ipynb
 ```
 
-It auto-detects Colab vs local. In Colab, mount Drive and point
-`PROJECT_ROOT` at wherever your 494 paper folders live; locally it
-walks `data/papers/{pmc_id}/full_text.xml`. Runtime is ~10 min on a
-free Colab CPU runtime, ~3-5 min on a T4. Outputs:
+Run it locally: it auto-detects the project root from `package.json`
++ `public/data/*` markers, and walks `data/papers/{pmc_id}/full_text.xml`
+for the raw inputs. There is a `PROJECT_ROOT_OVERRIDE` at the top of the
+setup cell for remote-kernel setups (Colab, JupyterHub). Runtime is
+~3–10 minutes total; the embedding pass auto-uses CUDA if available.
+Outputs:
 
 ```
 public/data/index/
@@ -153,7 +155,7 @@ src/
                  gemini.js · apiKey.js · paperText.js · assetUrl.js
   ui/          ApiKeyModal, HowItWorks, MarkdownRenderer
   state/       store.js (zustand)
-notebooks/     00_legacy_pipeline (NASA Apps original) + 03_build_rag_index (new)
+notebooks/     build_rag_index — chunks + MiniLM embeddings + BM25 + KG eval
 docs/          ARCHITECTURE.md
 public/data/   publications.json, knowledge_graph.json, kg_lean.json,
                index/ (precomputed retrieval artifacts)
@@ -164,8 +166,8 @@ public/data/   publications.json, knowledge_graph.json, kg_lean.json,
 - Source dataset: NASA Open Science Data Repository / Space Apps 2025
 - Full-text content: PubMed Central (PMC) OAI API
 - Embedding model: `sentence-transformers/all-MiniLM-L6-v2`
-- Original Space Apps submission idea & team — preserved in the initial
-  commit and `notebooks/00_legacy_pipeline.ipynb`
+- Original Space Apps 2025 submission — preserved in the initial git
+  commit (the pre-refactor `index.html` and `Papers_Extraction_and_Processing.ipynb`)
 
 ## License
 

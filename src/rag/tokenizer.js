@@ -1,5 +1,5 @@
 // Sparse-side tokenizer used by BM25. Must match the Python tokenizer
-// in notebooks/03_build_rag_index.ipynb byte-for-byte, otherwise the
+// in notebooks/build_rag_index.ipynb byte-for-byte, otherwise the
 // query terms won't match the precomputed postings.
 //
 // Behavior:
