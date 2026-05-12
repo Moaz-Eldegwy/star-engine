@@ -6,11 +6,9 @@
 </p>
 
 <p align="center">
-  <a href="https://starengineai.space">Live demo</a>
+  <a href="https://moaz-eldegwy.github.io/star-engine/">Live demo</a>
   &nbsp;·&nbsp;
   <a href="docs/ARCHITECTURE.md">Architecture</a>
-  &nbsp;·&nbsp;
-  <a href="notebooks/build_rag_index.ipynb">Indexing notebook</a>
 </p>
 
 ---
@@ -40,17 +38,13 @@ user's Gemini key is reserved for the rerank and generation steps.
 - **Generation** — Google Gemini Flash, streaming SSE
 - **Offline indexing (Python / Colab)** — `sentence-transformers`,
   `rank-bm25`, `lxml`, section-aware JATS chunking
-- **CI / hosting** — GitHub Actions → GitHub Pages + Hostinger (FTP) at
-  `starengineai.space`
+- **CI / hosting** — GitHub Actions → GitHub Pages
 
 ## Live demo
 
-- Production: <https://starengineai.space>
-- GitHub Pages mirror: <https://moaz-eldegwy.github.io/star-engine/>
+- **Live URL**: <https://moaz-eldegwy.github.io/star-engine/>
 
-Both URLs serve the same `dist/` (Vite is configured with `base: './'`).
-The CI pipeline at `.github/workflows/deploy.yml` builds once and
-publishes to both targets in parallel on every push to `main`.
+Vite is configured with `base: './'`, allowing the `dist/` bundle to be served from any subpath. The CI pipeline at `.github/workflows/deploy.yml` builds and publishes the site automatically to GitHub Pages on every push to `main`.
 
 ## Run locally
 
@@ -103,12 +97,6 @@ Push to `main` and `.github/workflows/deploy.yml` does the rest:
 
 1. `npm ci && npm run build` (Vite, base `./`)
 2. Upload `dist/` to GitHub Pages via `actions/deploy-pages@v4`
-3. Mirror `dist/` to Hostinger's `public_html/` via FTP (requires
-   `HOSTINGER_FTP_HOST`, `HOSTINGER_FTP_USER`, `HOSTINGER_FTP_PASSWORD`
-   repo secrets)
-
-Set `vars.HOSTINGER_ENABLED=false` to skip the Hostinger leg (useful
-for forks).
 
 ## Architecture
 

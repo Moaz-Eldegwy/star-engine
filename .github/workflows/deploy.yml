@@ -1,16 +1,8 @@
-name: Build & deploy (GitHub Pages + Hostinger)
+name: Build & deploy (GitHub Pages)
 
 # Single CI workflow that:
-#   1. Builds the Vite app once (base: './' so the same dist/ works at both
-#      a sub-path and a domain root).
+#   1. Builds the Vite app once (base: './' so the same dist/ works at sub-paths).
 #   2. Publishes to GitHub Pages.
-#   3. Mirrors the same dist/ to Hostinger's public_html via FTP for the
-#      production custom domain (starengineai.space).
-#
-# Required repo secrets for the Hostinger step:
-#   HOSTINGER_FTP_HOST      e.g. ftp.starengineai.space (or the host from hPanel)
-#   HOSTINGER_FTP_USER
-#   HOSTINGER_FTP_PASSWORD
 
 on:
   push:
@@ -19,7 +11,7 @@ on:
 
 # Allow only one concurrent deployment, skipping queued runs in between.
 concurrency:
-  group: 'pages-and-hostinger'
+  group: 'pages'
   cancel-in-progress: true
 
 permissions:
@@ -75,32 +67,3 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
-
-  deploy-hostinger:
-    needs: build
-    runs-on: ubuntu-latest
-    # Skip if FTP secrets aren't configured (e.g. on forks).
-    if: ${{ vars.HOSTINGER_ENABLED != 'false' }}
-    steps:
-      - name: Download build artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist
-
-      - name: Sync to Hostinger via FTP
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.HOSTINGER_FTP_HOST }}
-          username: ${{ secrets.HOSTINGER_FTP_USER }}
-          password: ${{ secrets.HOSTINGER_FTP_PASSWORD }}
-          local-dir: ./dist/
-          server-dir: /public_html/
-          # Only delete remote files that no longer exist in the build —
-          # keeps user-uploaded files at the root untouched if any exist.
-          dangerous-clean-slate: false
-          # Don't waste FTP roundtrips on artifacts we never serve.
-          exclude: |
-            **/.DS_Store
-            **/Thumbs.db
-            **/node_modules/**
