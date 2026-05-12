@@ -132,14 +132,18 @@ export async function* streamGenerateContent({
         if (!line.startsWith('data:')) continue;
         const json = line.slice(5).trim();
         if (!json || json === '[DONE]') continue;
+        let parsed;
         try {
-          const parsed = JSON.parse(json);
-          const delta = parsed?.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (delta) yield delta;
+          parsed = JSON.parse(json);
         } catch {
-          // Some lines may be partial; ignore — buffered residue is parsed
-          // on the next iteration.
+          continue; // Ignore partial JSON parses
         }
+        
+        if (parsed.error) {
+          throw new Error(parsed.error.message || 'Stream returned an error object.');
+        }
+        const delta = parsed?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (delta) yield delta;
       }
     }
   }

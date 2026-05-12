@@ -8,7 +8,7 @@
 
 const STORAGE_KEY = 'starengine.geminiKey';
 const MODEL_KEY = 'starengine.geminiModel';
-const DEFAULT_MODEL = 'gemini-flash-latest';
+const DEFAULT_MODEL = 'gemini-1.5-flash-latest';
 
 export function getApiKey() {
   try {
