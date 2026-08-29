@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <a href="https://starengineai.space/">Live demo</a>
+  <a href="https://moaz-eldegwy.github.io/star-engine/">Live demo</a>
   &nbsp;·&nbsp;
   <a href="docs/ARCHITECTURE.md">Architecture</a>
 </p>
